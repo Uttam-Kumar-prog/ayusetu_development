@@ -38,6 +38,7 @@ export default function ConsultationRoom() {
   const pollTimerRef = useRef(null);
   const heartbeatTimerRef = useRef(null);
   const lastSignalAtRef = useRef(null);
+  const sessionStartAtRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -167,6 +168,7 @@ export default function ConsultationRoom() {
 
   const processSignal = useCallback(async (signal) => {
     if (!signal || signal.fromUserId === myUserId) return;
+    if (sessionStartAtRef.current && signal?.createdAt && signal.createdAt <= sessionStartAtRef.current) return;
 
     const isMyPeer = (appt?.userRole === 'doctor' && signal.fromRole === 'patient')
       || (appt?.userRole === 'patient' && signal.fromRole === 'doctor');
@@ -175,6 +177,7 @@ export default function ConsultationRoom() {
     if (signal.type === 'peer-joined') {
       setPeerPresent(true);
       if (signal.fromUserName) setPeerName(signal.fromUserName);
+      if (callStatus === 'live') createPeerConnection();
       showToast(`${signal.fromUserName || 'Participant'} has joined the room`);
       return;
     }
@@ -189,6 +192,7 @@ export default function ConsultationRoom() {
     if (signal.type === 'presence-heartbeat') {
       setPeerPresent(true);
       if (signal.fromUserName) setPeerName(signal.fromUserName);
+      if (callStatus === 'live') createPeerConnection();
       if (typeof signal?.payload?.audio === 'boolean') setPeerMicOn(signal.payload.audio);
       if (typeof signal?.payload?.video === 'boolean') setPeerCamOn(signal.payload.video);
       return;
@@ -258,7 +262,7 @@ export default function ConsultationRoom() {
         if (!ignoreOfferRef.current) console.error('[WebRTC] ICE error', iceError);
       }
     }
-  }, [appt?.userRole, closePeer, createPeerConnection, myUserId, publishSignal]);
+  }, [appt?.userRole, callStatus, closePeer, createPeerConnection, myUserId, publishSignal]);
 
   useEffect(() => {
     processSignalRef.current = processSignal;
@@ -271,6 +275,14 @@ export default function ConsultationRoom() {
     setPeerName(appt.userRole === 'doctor' ? appt.patientName : appt.doctorName);
     setRoomState({ status: appt.status === 'IN_PROGRESS' ? 'live' : 'waiting' });
     setConnError('');
+    const nowIso = new Date().toISOString();
+    sessionStartAtRef.current = nowIso;
+    lastSignalAtRef.current = nowIso;
+    pendingWebrtcSignalsRef.current = [];
+    if (appt.status === 'IN_PROGRESS') {
+      setCallStatus('live');
+      createPeerConnection();
+    }
 
     const fetchSignals = async () => {
       try {
@@ -318,7 +330,13 @@ export default function ConsultationRoom() {
       closePeer();
       stopTracks();
     };
-  }, [access, appt, roomId, processSignal, publishSignal, closePeer, attachLocalTracks]);
+  }, [access, appt, roomId, processSignal, publishSignal, closePeer, attachLocalTracks, createPeerConnection]);
+
+  useEffect(() => {
+    if (callStatus === 'live' && peerPresent) {
+      createPeerConnection();
+    }
+  }, [callStatus, peerPresent, createPeerConnection]);
 
   const handleStartCall = useCallback(async () => {
     if (!isDoctor) return;
