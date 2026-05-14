@@ -4,6 +4,7 @@ const {
   bookAppointment, listMyAppointments, updateAppointmentStatus,
   startConsultation, remindPatient, getMeetingRoomAccess,
   getDoctorCaseSummary, structureAppointmentSymptoms,
+  publishRoomSignal, getRoomSignals,
 } = require('../controllers/appointmentController');
 const { protect, authorize } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -25,6 +26,28 @@ router.get('/room/:roomId/access',
   protect,
   param('roomId').isString().trim().notEmpty().isLength({ min: 6, max: 120 }),
   validate, getMeetingRoomAccess);
+
+router.get('/room/:roomId/signals',
+  protect,
+  param('roomId').isString().trim().notEmpty().isLength({ min: 6, max: 120 }),
+  validate, getRoomSignals);
+
+router.post('/room/:roomId/signal',
+  protect,
+  param('roomId').isString().trim().notEmpty().isLength({ min: 6, max: 120 }),
+  body('type').isIn([
+    'peer-joined',
+    'peer-left',
+    'presence-heartbeat',
+    'call-started',
+    'call-ended',
+    'media-state-changed',
+    'webrtc-offer',
+    'webrtc-answer',
+    'webrtc-ice-candidate',
+  ]).withMessage('Invalid signal type'),
+  body('payload').optional().isObject().withMessage('payload must be an object'),
+  validate, publishRoomSignal);
 
 router.patch('/:id/status',
   protect,

@@ -52,6 +52,8 @@ export const appointmentsAPI = {
   create: (data) => api.post('/appointments', data),
   mine: () => api.get('/appointments/mine'),
   roomAccess: (roomId) => api.get(`/appointments/room/${roomId}/access`),
+  roomSignals: (roomId, params = {}) => api.get(`/appointments/room/${roomId}/signals`, { params }),
+  publishRoomSignal: (roomId, data) => api.post(`/appointments/room/${roomId}/signal`, data),
   updateStatus: (id, data) => api.patch(`/appointments/${id}/status`, data),
   caseSummary: (id) => api.get(`/appointments/${id}/case-summary`),
   startConsultation: (id) => api.post(`/appointments/${id}/start`),

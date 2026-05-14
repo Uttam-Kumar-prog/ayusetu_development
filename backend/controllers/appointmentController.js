@@ -4,6 +4,7 @@ const DoctorAvailability = require('../models/DoctorAvailability');
 const User = require('../models/User');
 const SymptomHistory = require('../models/SymptomHistory');
 const PatientSymptomMemory = require('../models/PatientSymptomMemory');
+const ConsultationSignal = require('../models/ConsultationSignal');
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { createNotification } = require('../services/notificationService');
@@ -11,6 +12,50 @@ const email = require('../services/emailService');
 const { structureSymptoms } = require('../services/aiSymptomService');
 
 const genCode = () => `APT-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+const resolveMeetingAccess = async (roomId, user) => {
+  const appointment = await Appointment.findOne({ 'meeting.roomId': roomId })
+    .populate('patientId', 'fullName')
+    .populate('doctorId', 'fullName');
+
+  if (!appointment) throw new ApiError(404, 'Consultation room not found');
+
+  const isAdmin = user.role === 'admin';
+  const isDoctor = String(appointment.doctorId?._id || appointment.doctorId) === String(user._id);
+  const isPatient = String(appointment.patientId?._id || appointment.patientId) === String(user._id);
+  if (!isAdmin && !isDoctor && !isPatient) throw new ApiError(403, 'Not authorized to join this consultation');
+
+  const now = Date.now();
+  const startMs = new Date(appointment.startAt).getTime();
+  const endMs = new Date(appointment.endAt).getTime();
+  const windowStart = startMs - 20 * 60000;
+  const windowEnd = endMs + 90 * 60000;
+  const blocked = ['CANCELLED', 'NO_SHOW'].includes(String(appointment.status).toUpperCase());
+  const insideWindow = now >= windowStart && now <= windowEnd;
+  const canJoinNow = !blocked && insideWindow;
+
+  const reason = blocked
+    ? `Meeting unavailable - appointment is ${appointment.status}.`
+    : insideWindow
+      ? 'Meeting is active.'
+      : now < windowStart
+        ? 'Room opens 20 minutes before scheduled time.'
+        : 'Meeting window has passed.';
+
+  return {
+    appointment,
+    isAdmin,
+    isDoctor,
+    isPatient,
+    access: {
+      canJoinNow,
+      reason,
+      now: new Date(now).toISOString(),
+      windowStart: new Date(windowStart).toISOString(),
+      windowEnd: new Date(windowEnd).toISOString(),
+    },
+  };
+};
 
 // POST /api/appointments
 exports.bookAppointment = asyncHandler(async (req, res) => {
@@ -163,48 +208,102 @@ exports.remindPatient = asyncHandler(async (req, res) => {
 // GET /api/appointments/room/:roomId/access
 exports.getMeetingRoomAccess = asyncHandler(async (req, res) => {
   const { roomId } = req.params;
-  const appointment = await Appointment.findOne({ 'meeting.roomId': roomId })
-    .populate('patientId', 'fullName')
-    .populate('doctorId',  'fullName');
-
-  if (!appointment) throw new ApiError(404, 'Consultation room not found');
-
-  const isAdmin  = req.user.role === 'admin';
-  const isDoctor = String(appointment.doctorId?._id  || appointment.doctorId)  === String(req.user._id);
-  const isPatient= String(appointment.patientId?._id || appointment.patientId) === String(req.user._id);
-  if (!isAdmin && !isDoctor && !isPatient) throw new ApiError(403, 'Not authorized to join this consultation');
-
-  const now          = Date.now();
-  const startMs      = new Date(appointment.startAt).getTime();
-  const endMs        = new Date(appointment.endAt).getTime();
-  const windowStart  = startMs - 20 * 60000;
-  const windowEnd    = endMs   + 90 * 60000;
-  const blocked      = ['CANCELLED','NO_SHOW'].includes(String(appointment.status).toUpperCase());
-  const insideWindow = now >= windowStart && now <= windowEnd;
-  const canJoinNow   = !blocked && insideWindow;
-
-  const reason = blocked
-    ? `Meeting unavailable — appointment is ${appointment.status}.`
-    : insideWindow ? 'Meeting is active.'
-    : now < windowStart ? 'Room opens 20 minutes before scheduled time.'
-    : 'Meeting window has passed.';
+  const { appointment, isDoctor, isPatient, access } = await resolveMeetingAccess(roomId, req.user);
 
   return res.json({
     success: true,
-    access: { canJoinNow, reason, now: new Date(now).toISOString(),
-      windowStart: new Date(windowStart).toISOString(), windowEnd: new Date(windowEnd).toISOString() },
+    access,
     appointment: {
-      id: appointment._id, status: appointment.status,
-      slotDate: appointment.slotDate, slotTime: appointment.slotTime,
+      id: appointment._id,
+      status: appointment.status,
+      slotDate: appointment.slotDate,
+      slotTime: appointment.slotTime,
       consultationType: appointment.consultationType,
-      startAt: appointment.startAt, endAt: appointment.endAt,
+      startAt: appointment.startAt,
+      endAt: appointment.endAt,
       meeting: appointment.meeting,
-      doctorName:  appointment?.doctorId?.fullName  || '',
+      doctorName: appointment?.doctorId?.fullName || '',
       patientName: appointment?.patientId?.fullName || '',
       userRole: isDoctor ? 'doctor' : isPatient ? 'patient' : 'admin',
     },
   });
 });
+
+// POST /api/appointments/room/:roomId/signal
+exports.publishRoomSignal = asyncHandler(async (req, res) => {
+  const { roomId } = req.params;
+  const { type, payload = {} } = req.body;
+
+  const { appointment, access, isDoctor, isPatient } = await resolveMeetingAccess(roomId, req.user);
+  if (!access.canJoinNow) throw new ApiError(403, access.reason || 'Meeting window is closed.');
+
+  const fromRole = isDoctor ? 'doctor' : isPatient ? 'patient' : 'admin';
+  const signal = await ConsultationSignal.create({
+    roomId,
+    appointmentId: appointment._id,
+    fromUserId: req.user._id,
+    fromRole,
+    fromUserName: req.user.fullName || '',
+    type,
+    payload: payload && typeof payload === 'object' ? payload : {},
+  });
+
+  return res.status(201).json({
+    success: true,
+    signal: {
+      id: signal._id,
+      roomId: signal.roomId,
+      type: signal.type,
+      payload: signal.payload,
+      fromUserId: String(signal.fromUserId),
+      fromUserName: signal.fromUserName,
+      fromRole: signal.fromRole,
+      createdAt: signal.createdAt,
+    },
+  });
+});
+
+// GET /api/appointments/room/:roomId/signals
+exports.getRoomSignals = asyncHandler(async (req, res) => {
+  const { roomId } = req.params;
+  const { after } = req.query;
+  const requestedLimit = Number(req.query.limit || 60);
+  const limit = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(requestedLimit, 150)) : 60;
+
+  const { appointment, access } = await resolveMeetingAccess(roomId, req.user);
+  if (!access.canJoinNow) throw new ApiError(403, access.reason || 'Meeting window is closed.');
+
+  const query = { roomId, appointmentId: appointment._id };
+  if (after) {
+    const afterDate = new Date(String(after));
+    if (!Number.isNaN(afterDate.getTime())) {
+      query.createdAt = { $gt: afterDate };
+    }
+  }
+
+  const signals = await ConsultationSignal.find(query).sort({ createdAt: 1 }).limit(limit);
+
+  return res.json({
+    success: true,
+    signals: signals.map((signal) => ({
+      id: signal._id,
+      roomId: signal.roomId,
+      type: signal.type,
+      payload: signal.payload || {},
+      fromUserId: String(signal.fromUserId),
+      fromUserName: signal.fromUserName || '',
+      fromRole: signal.fromRole,
+      createdAt: signal.createdAt,
+    })),
+    meta: {
+      count: signals.length,
+      cursor: signals.length ? signals[signals.length - 1].createdAt : after || null,
+      doctorName: appointment?.doctorId?.fullName || '',
+      patientName: appointment?.patientId?.fullName || '',
+    },
+  });
+});
+
 
 // GET /api/appointments/:id/case-summary  (doctor only)
 exports.getDoctorCaseSummary = asyncHandler(async (req, res) => {
@@ -258,3 +357,4 @@ exports.structureAppointmentSymptoms = asyncHandler(async (req, res) => {
 
   return res.json({ success: true, structured });
 });
+
