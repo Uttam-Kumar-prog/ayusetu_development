@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const app = require('./app');
+const { buildSocketCorsOptions } = require('./config/cors');
 const { setupSignaling } = require('./services/signalingService');
 const { startReminderScheduler } = require('./services/reminderScheduler');
 
@@ -18,11 +19,7 @@ const startServer = async () => {
 
     // Attach Socket.IO
     const io = new Server(httpServer, {
-      cors: {
-        origin: process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || '*',
-        methods: ['GET', 'POST'],
-        credentials: true,
-      },
+      cors: buildSocketCorsOptions(),
       transports: ['websocket', 'polling'],
     });
 

@@ -5,16 +5,14 @@ const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
+const { buildCorsOptions } = require('./config/cors');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
 app.use(helmet({ crossOriginEmbedderPolicy: false }));
 app.use(compression());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || '*',
-  credentials: true,
-}));
+app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
