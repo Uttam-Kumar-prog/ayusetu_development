@@ -1,0 +1,67 @@
+# 🚀 AyuSetu - ONE CLICK START
+
+## **Simple Way to Run Everything**
+
+### **Just run this ONE file:**
+
+```
+run-ayusetu.bat
+```
+
+**That's it!** 🎉
+
+---
+
+## **What this script does:**
+
+✅ Automatically detects your real IP (ignores Docker/VPN IPs)  
+✅ Updates ALL configuration files  
+✅ Kills any old processes  
+✅ Starts backend server  
+✅ Starts frontend server  
+✅ Shows you the correct URL to use  
+
+---
+
+## **How to use it:**
+
+1. **Double-click:** `run-ayusetu.bat`
+2. **Wait for 2 windows to open** (Backend and Frontend)
+3. **Copy the IP address shown**
+4. **Open in browser:** `http://YOUR_IP:5173`
+5. **Login with:**
+   - Email: `aarav.sharma@ayusetu.com`
+   - Password: `password123`
+
+---
+
+## **If IP changes later:**
+
+Just run the script again!
+
+```
+run-ayusetu.bat
+```
+
+Everything will be updated automatically! ✅
+
+---
+
+## **From another device on same WiFi:**
+
+Use the IP shown when you run the script, for example:
+- `http://192.168.1.5:5173` (or whatever IP is shown)
+
+---
+
+## **Features Ready:**
+
+✅ Doctor profiles  
+✅ Appointment booking  
+✅ Time slots (including 7:30)  
+✅ Video calls  
+✅ Network access  
+
+---
+
+**Questions?** Just run the script and it will show you everything you need! 🎯

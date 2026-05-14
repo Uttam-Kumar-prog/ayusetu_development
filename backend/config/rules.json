@@ -1,0 +1,53 @@
+{
+  "symptoms": {
+    "headache": {
+      "dosha": "Pitta/Vata",
+      "severity": {
+        "mild": { "score": 1, "home": "Ginger tea 2x daily; rest in dark room", "reason": "Balances Pitta heat, calms Vata movement" },
+        "moderate": { "score": 2, "med": "Brahmi Vati or Pathyadi Kadha", "reason": "Reduces inflammation, calms nerves" },
+        "severe": { "score": 3, "action": "Consult Ayurvedic doctor immediately", "reason": "May indicate deeper imbalance" }
+      }
+    },
+    "indigestion": {
+      "dosha": "Kapha/Pitta",
+      "severity": {
+        "mild": { "score": 1, "home": "Ajwain water after meals; light walks", "reason": "Stimulates Agni (digestive fire)" },
+        "moderate": { "score": 2, "med": "Hingvashtak Churna or Triphala", "reason": "Clears Ama (toxins), improves digestion" },
+        "severe": { "score": 3, "action": "Seek medical consultation" }
+      }
+    },
+    "joint_pain": {
+      "dosha": "Vata",
+      "severity": {
+        "mild": { "score": 1, "home": "Warm sesame oil massage; ginger tea", "reason": "Pacifies Vata dryness and coldness" },
+        "moderate": { "score": 2, "med": "Maharasnadi Kwath or Yogaraja Guggulu", "reason": "Reduces Vata inflammation" },
+        "severe": { "score": 3, "action": "Doctor consultation required" }
+      }
+    },
+    "cold_cough": {
+      "dosha": "Kapha",
+      "severity": {
+        "mild": { "score": 1, "home": "Turmeric milk; Tulsi-ginger tea", "reason": "Clears Kapha congestion, boosts immunity" },
+        "moderate": { "score": 2, "med": "Sitopaladi Churna or Trikatu", "reason": "Dries excess Kapha, improves respiration" },
+        "severe": { "score": 3, "action": "Medical attention if persistent" }
+      }
+    },
+    "fatigue": {
+      "dosha": "Vata/Kapha",
+      "severity": {
+        "mild": { "score": 1, "home": "Ashwagandha milk; regular sleep routine", "reason": "Rejuvenates Ojas (vital energy)" },
+        "moderate": { "score": 2, "med": "Chyawanprash or Shilajit", "reason": "Boosts stamina and immunity" },
+        "severe": { "score": 3, "action": "Consult practitioner" }
+      }
+    },
+    "anxiety": {
+      "dosha": "Vata",
+      "severity": {
+        "mild": { "score": 1, "home": "Brahmi tea; Pranayama breathing", "reason": "Calms Vata mind, reduces worry" },
+        "moderate": { "score": 2, "med": "Saraswatarishta or Ashwagandha", "reason": "Balances nervous system" },
+        "severe": { "score": 3, "action": "Professional guidance needed" }
+      }
+    }
+  },
+  "disclaimer": "⚠️ NOT medical advice. Consult certified Ayurvedic practitioner. For emergencies, seek immediate medical help."
+}
