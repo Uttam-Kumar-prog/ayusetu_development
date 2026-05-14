@@ -38,9 +38,9 @@ table{width:100%;border-collapse:collapse;font-size:14px;margin-top:8px}
 th,td{padding:9px 12px;border:1px solid #e2e8f0;text-align:left}
 thead tr{background:#f0fdf4}
 </style></head><body><div class="wrap">
-<div class="hdr"><h1>🌿 IU Setu — AyuSetu Health</h1><p>Ayurvedic Telemedicine Platform</p></div>
+<div class="hdr"><h1>🌿 AyuSetu — AyuSetu Health</h1><p>Ayurvedic Telemedicine Platform</p></div>
 <div class="body">${content}</div>
-<div class="ftr"><p>This is an automated message. Do not reply. &copy; ${new Date().getFullYear()} IU Setu Healthcare</p></div>
+<div class="ftr"><p>This is an automated message. Do not reply. &copy; ${new Date().getFullYear()} AyuSetu Healthcare</p></div>
 </div></body></html>`;
 }
 
@@ -50,7 +50,7 @@ async function send({ to, subject, html }) {
     console.log(`[Email LOG] To:${to} | Subject:${subject}`);
     return { logged: true };
   }
-  return t.sendMail({ from: `"IU Setu Health" <${process.env.EMAIL_USER}>`, to, subject, html });
+  return t.sendMail({ from: `"AyuSetu Health" <${process.env.EMAIL_USER}>`, to, subject, html });
 }
 
 exports.bookingConfirmToPatient = async ({ patient, doctor, appt }) => {

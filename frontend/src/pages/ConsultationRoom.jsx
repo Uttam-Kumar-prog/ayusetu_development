@@ -44,6 +44,8 @@ export default function ConsultationRoom() {
   const remoteVideoRef = useRef(null);
   const makingOfferRef = useRef(false);
   const ignoreOfferRef = useRef(false);
+  const pendingWebrtcSignalsRef = useRef([]);
+  const processSignalRef = useRef(null);
   const politeRef = useRef(false);
   const micOnRef = useRef(true);
   const camOnRef = useRef(true);
@@ -83,6 +85,20 @@ export default function ConsultationRoom() {
     }
   }, [roomId]);
 
+  const attachLocalTracks = useCallback((pc) => {
+    if (!pc || !localStreamRef.current) return;
+
+    const senderTrackIds = new Set(
+      pc.getSenders().map((sender) => sender.track?.id).filter(Boolean)
+    );
+
+    localStreamRef.current.getTracks().forEach((track) => {
+      if (!senderTrackIds.has(track.id)) {
+        pc.addTrack(track, localStreamRef.current);
+      }
+    });
+  }, []);
+
   useEffect(() => {
     if (!roomId) return;
     (async () => {
@@ -104,11 +120,7 @@ export default function ConsultationRoom() {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     pcRef.current = pc;
 
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => {
-        pc.addTrack(track, localStreamRef.current);
-      });
-    }
+    attachLocalTracks(pc);
 
     pc.ontrack = ({ streams: [stream] }) => {
       if (remoteVideoRef.current) {
@@ -140,8 +152,18 @@ export default function ConsultationRoom() {
       }
     };
 
+    setTimeout(async () => {
+      const queued = [...pendingWebrtcSignalsRef.current];
+      pendingWebrtcSignalsRef.current = [];
+      for (const signal of queued) {
+        if (processSignalRef.current) {
+          await processSignalRef.current(signal);
+        }
+      }
+    }, 0);
+
     return pc;
-  }, [publishSignal]);
+  }, [attachLocalTracks, publishSignal]);
 
   const processSignal = useCallback(async (signal) => {
     if (!signal || signal.fromUserId === myUserId) return;
@@ -174,6 +196,7 @@ export default function ConsultationRoom() {
 
     if (signal.type === 'call-started') {
       setCallStatus('live');
+      createPeerConnection();
       showToast(`${signal.fromUserName || 'Doctor'} started the call`);
       return;
     }
@@ -193,8 +216,7 @@ export default function ConsultationRoom() {
     }
 
     if (signal.type === 'webrtc-offer') {
-      if (!pcRef.current) return;
-      const pc = pcRef.current;
+      const pc = pcRef.current || createPeerConnection();
       const offerCollision = makingOfferRef.current || pc.signalingState !== 'stable';
       ignoreOfferRef.current = !politeRef.current && offerCollision;
       if (ignoreOfferRef.current) return;
@@ -210,7 +232,10 @@ export default function ConsultationRoom() {
     }
 
     if (signal.type === 'webrtc-answer') {
-      if (!pcRef.current) return;
+      if (!pcRef.current) {
+        pendingWebrtcSignalsRef.current.push(signal);
+        return;
+      }
       try {
         if (pcRef.current.signalingState !== 'stable') {
           await pcRef.current.setRemoteDescription(signal.payload.answer);
@@ -222,14 +247,22 @@ export default function ConsultationRoom() {
     }
 
     if (signal.type === 'webrtc-ice-candidate') {
-      if (!pcRef.current || !signal?.payload?.candidate) return;
+      if (!signal?.payload?.candidate) return;
+      if (!pcRef.current) {
+        pendingWebrtcSignalsRef.current.push(signal);
+        return;
+      }
       try {
         await pcRef.current.addIceCandidate(signal.payload.candidate);
       } catch (iceError) {
         if (!ignoreOfferRef.current) console.error('[WebRTC] ICE error', iceError);
       }
     }
-  }, [appt?.userRole, closePeer, myUserId, publishSignal]);
+  }, [appt?.userRole, closePeer, createPeerConnection, myUserId, publishSignal]);
+
+  useEffect(() => {
+    processSignalRef.current = processSignal;
+  }, [processSignal]);
 
   useEffect(() => {
     if (!access?.canJoinNow || !appt) return;
@@ -271,7 +304,8 @@ export default function ConsultationRoom() {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-        setCallStatus('idle');
+        attachLocalTracks(pcRef.current);
+        setCallStatus((current) => (current === 'live' ? current : 'idle'));
       } catch {
         setConnError('Camera/microphone access denied. Please allow permissions and refresh.');
       }
@@ -284,7 +318,7 @@ export default function ConsultationRoom() {
       closePeer();
       stopTracks();
     };
-  }, [access, appt, roomId, processSignal, publishSignal, closePeer]);
+  }, [access, appt, roomId, processSignal, publishSignal, closePeer, attachLocalTracks]);
 
   const handleStartCall = useCallback(async () => {
     if (!isDoctor) return;
