@@ -4,31 +4,88 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
+let refreshInFlight = null;
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
+  const token = localStorage.getItem('access_token') || localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error?.response?.status === 401) {
-      const shouldLogout = !String(error?.config?.url || '').includes('/auth/');
-      if (shouldLogout) {
-        localStorage.removeItem('token');
+  async (error) => {
+    const originalRequest = error?.config;
+    const isUnauthorized = error?.response?.status === 401;
+    const requestUrl = String(originalRequest?.url || '');
+    const nonRefreshableAuthEndpoints = [
+      '/auth/login',
+      '/auth/signup',
+      '/auth/register',
+      '/auth/google-login',
+      '/auth/verify-otp',
+      '/auth/resend-otp',
+      '/auth/forgot-password',
+      '/auth/verify-forgot-password-otp',
+      '/auth/reset-password',
+      '/auth/refresh-token',
+      '/auth/logout',
+    ];
+    const isNonRefreshableAuthEndpoint = nonRefreshableAuthEndpoints.some((endpoint) =>
+      requestUrl.includes(endpoint)
+    );
+
+    if (isUnauthorized && !isNonRefreshableAuthEndpoint && originalRequest && !originalRequest._retry) {
+      originalRequest._retry = true;
+      const storedRefreshToken = localStorage.getItem('refresh_token');
+
+      if (!storedRefreshToken) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
         localStorage.removeItem('ayur_user');
+        return Promise.reject(error);
+      }
+
+      if (!refreshInFlight) {
+        refreshInFlight = api.post('/auth/refresh-token', { refreshToken: storedRefreshToken })
+          .finally(() => {
+            refreshInFlight = null;
+          });
+      }
+
+      try {
+        const { data } = await refreshInFlight;
+        localStorage.setItem('access_token', data?.accessToken || '');
+        localStorage.setItem('refresh_token', data?.refreshToken || '');
+        if (data?.user) {
+          localStorage.setItem('ayur_user', JSON.stringify(data.user));
+        }
+        originalRequest.headers.Authorization = `Bearer ${data?.accessToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('ayur_user');
+        return Promise.reject(refreshError);
       }
     }
+
     return Promise.reject(error);
   }
 );
 
 export const authAPI = {
+  signup: (data) => api.post('/auth/signup', data),
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
-  sendOtp: (data) => api.post('/auth/send-otp', data),
+  googleLogin: (data) => api.post('/auth/google-login', data),
   verifyOtp: (data) => api.post('/auth/verify-otp', data),
+  resendOtp: (data) => api.post('/auth/resend-otp', data),
+  refreshToken: (data) => api.post('/auth/refresh-token', data),
+  logout: (data) => api.post('/auth/logout', data),
+  forgotPassword: (data) => api.post('/auth/forgot-password', data),
+  verifyForgotPasswordOtp: (data) => api.post('/auth/verify-forgot-password-otp', data),
+  resetPassword: (data) => api.post('/auth/reset-password', data),
   me: () => api.get('/auth/me'),
   updateMe: (data) => api.patch('/auth/me', data),
 };

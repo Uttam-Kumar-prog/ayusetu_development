@@ -1,270 +1,254 @@
-import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom"; 
-import { useAuth } from "../context/AuthContext";
-import { authAPI } from "../utils/api";
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { authAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
-export default function Login() {
-  const [role, setRole] = useState('patient');
-  const [isFlipped, setIsFlipped] = useState(false);
-   const [isSubmitting, setIsSubmitting] = useState(false);
-   const [errorMessage, setErrorMessage] = useState('');
-  
-  const { login } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+const defaultError = 'Authentication failed. Please try again.';
 
-  // Determine redirect path
-  const redirectPath = location.state?.from || (role === 'doctor' ? "/doctor-dashboard" : "/dashboard");
-  const alertMessage = location.state?.message;
+const loadGoogleScript = () =>
+  new Promise((resolve, reject) => {
+    if (window.google?.accounts?.id) return resolve();
+    const existing = document.querySelector('script[data-google-gsi="true"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Failed to load Google script')));
+      return;
+    }
 
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    license: "" // Extra field for doctors
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleGsi = 'true';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Google script'));
+    document.body.appendChild(script);
   });
 
-  const AUTH_FAILURE_MESSAGES = {
-    login: 'Login failed. Please check your credentials.',
-    register: 'Registration failed. Please try again.',
+export default function Login() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { startOtpFlow } = useAuth();
+  const googleButtonRef = useRef(null);
+
+  const [mode, setMode] = useState('login');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    password: '',
+    role: 'patient',
+  });
+
+  const redirectPath = location.state?.from || '/dashboard';
+
+  const isLogin = mode === 'login';
+
+  const pageTitle = useMemo(
+    () => (isLogin ? 'Sign in to AyuSetu' : 'Create your AyuSetu account'),
+    [isLogin]
+  );
+
+  const handleAuthChallenge = (data, purpose) => {
+    startOtpFlow({
+      otpFlowToken: data?.otpFlowToken,
+      expiresAt: data?.expiresAt,
+      resendAfterSeconds: data?.resendAfterSeconds,
+      email: formData.email,
+      purpose,
+    });
+    navigate('/verify-otp', {
+      state: {
+        from: redirectPath,
+        purpose,
+      },
+      replace: true,
+    });
   };
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      if (isLogin) {
+        const { data } = await authAPI.login({
+          email: String(formData.email).trim().toLowerCase(),
+          password: formData.password,
+        });
+        handleAuthChallenge(data, 'login');
+      } else {
+        const { data } = await authAPI.signup({
+          fullName: formData.fullName,
+          email: String(formData.email).trim().toLowerCase(),
+          phone: formData.phone || undefined,
+          password: formData.password,
+          role: formData.role,
+        });
+        handleAuthChallenge(data, 'signup');
+      }
+    } catch (error) {
+      setErrorMessage(error?.response?.data?.message || defaultError);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-   const getRedirectForRole = (targetRole) => {
-     if (targetRole === 'doctor') return '/doctor-dashboard';
-     if (targetRole === 'admin') return '/admin-dashboard';
-     return '/dashboard';
-   };
+  useEffect(() => {
+    let cancelled = false;
 
-   // ===== 1. LOGIN HANDLER (Enters the Portal) =====
-   const handleLogin = async (e) => {
-    e.preventDefault();
-      setIsSubmitting(true);
-      setErrorMessage('');
+    const initializeGoogleButton = async () => {
+      if (!isLogin) return;
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId || !googleButtonRef.current) return;
 
       try {
-         const identifier = String(formData.email || '').trim();
-         const payload = { password: formData.password };
-         if (identifier.includes('@')) {
-           payload.email = identifier;
-         } else {
-           payload.phone = identifier;
-         }
+        await loadGoogleScript();
+        if (cancelled || !window.google?.accounts?.id) return;
 
-         const { data } = await authAPI.login(payload);
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: async (response) => {
+            if (!response?.credential) return;
+            setIsSubmitting(true);
+            setErrorMessage('');
+            try {
+              const { data } = await authAPI.googleLogin({ googleToken: response.credential });
+              handleAuthChallenge(data, 'google_login');
+            } catch (error) {
+              setErrorMessage(error?.response?.data?.message || 'Google sign-in failed');
+            } finally {
+              setIsSubmitting(false);
+            }
+          },
+        });
 
-         const user = login({ token: data?.token, user: data?.user });
-         navigate(location.state?.from || getRedirectForRole(user?.role || role));
-      } catch (error) {
-         setErrorMessage(AUTH_FAILURE_MESSAGES.login);
-      } finally {
-         setIsSubmitting(false);
+        googleButtonRef.current.innerHTML = '';
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: 'outline',
+          size: 'large',
+          width: 320,
+          text: 'continue_with',
+        });
+      } catch {
+        if (!cancelled) {
+          setErrorMessage('Google sign-in is currently unavailable.');
+        }
       }
-  };
+    };
 
-  // ===== 2. SIGNUP HANDLER (Redirects to Login) =====
-   const handleSignup = async (e) => {
-    e.preventDefault();
-      setIsSubmitting(true);
-      setErrorMessage('');
-
-      try {
-         if (
-           !String(formData.name || '').trim() ||
-           !String(formData.email || '').trim() ||
-           !String(formData.password || '').trim()
-         ) {
-           setErrorMessage(AUTH_FAILURE_MESSAGES.register);
-           setIsSubmitting(false);
-           return;
-         }
-
-         const { data } = await authAPI.register({
-            fullName: formData.name.trim(),
-            email: formData.email.trim(),
-            password: formData.password,
-            role,
-         });
-
-         const user = login({ token: data?.token, user: data?.user });
-         navigate(getRedirectForRole(user?.role || role));
-      } catch (error) {
-         setErrorMessage(AUTH_FAILURE_MESSAGES.register);
-      } finally {
-         setIsSubmitting(false);
-      }
-  };
+    initializeGoogleButton();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLogin]);
 
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center overflow-hidden font-sans selection:bg-blue-100 selection:text-blue-900 perspective-1000 py-10">
-      
-      {/* Background */}
-      <div className="fixed inset-0 z-0 pointer-events-none bg-slate-50">
-        <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:20px_20px] opacity-60" />
-        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-blue-100/60 rounded-full blur-[80px] opacity-70 animate-pulse" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-indigo-50/60 rounded-full blur-[80px] opacity-70" />
-      </div>
+    <div className="min-h-screen w-full flex items-center justify-center bg-slate-50 px-4 py-12">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-200 p-8">
+        <div className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-slate-900 font-serif">{pageTitle}</h1>
+          <p className="text-sm text-slate-500 mt-2">OTP verification is required for secure access.</p>
+        </div>
 
-      {/* Clean Header */}
-      <div className="absolute top-10 left-0 w-full flex justify-center z-20">
-         <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/30">
-              A
+        {errorMessage ? (
+          <div className="mb-4 text-sm font-medium text-rose-700 bg-rose-50 rounded-xl px-4 py-3">{errorMessage}</div>
+        ) : null}
+
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          {!isLogin ? (
+            <input
+              type="text"
+              placeholder="Full name"
+              value={formData.fullName}
+              onChange={(e) => setFormData((prev) => ({ ...prev, fullName: e.target.value }))}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
+              required
+            />
+          ) : null}
+
+          <input
+            type="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
+            required
+          />
+
+          {!isLogin ? (
+            <input
+              type="text"
+              placeholder="Phone (optional)"
+              value={formData.phone}
+              onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
+            />
+          ) : null}
+
+          <input
+            type="password"
+            placeholder="Password"
+            value={formData.password}
+            onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
+            required
+          />
+
+          {!isLogin ? (
+            <select
+              value={formData.role}
+              onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value }))}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-blue-500"
+            >
+              <option value="patient">Patient</option>
+              <option value="doctor">Doctor</option>
+              <option value="pharmacy">Pharmacy</option>
+            </select>
+          ) : null}
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full rounded-xl bg-blue-600 text-white font-bold py-3 hover:bg-blue-700 disabled:opacity-60"
+          >
+            {isSubmitting ? 'Please wait...' : isLogin ? 'Continue to OTP' : 'Create Account'}
+          </button>
+        </form>
+
+        {isLogin ? (
+          <>
+            <div className="my-5 flex items-center gap-3 text-slate-400 text-xs">
+              <div className="h-px bg-slate-200 flex-1" />
+              <span>OR</span>
+              <div className="h-px bg-slate-200 flex-1" />
             </div>
-            <span className="font-bold text-2xl text-slate-800 font-serif tracking-tight">
-              AyuSetu
-            </span>
-         </div>
-      </div>
+            <div className="flex justify-center">
+              <div ref={googleButtonRef} />
+            </div>
+            <div className="text-right mt-4">
+              <Link to="/forgot-password" className="text-sm text-blue-600 font-semibold hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+          </>
+        ) : null}
 
-      {/* 3D Card Container */}
-      <div className="w-full max-w-md px-4 perspective group">
-        <div className={`grid grid-cols-1 grid-rows-1 transition-all duration-700 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
-          
-          {/* ==============================
-              FRONT: LOGIN FORM
-          ============================== */}
-          <div className="col-start-1 row-start-1 backface-hidden z-10">
-             <div className="bg-white/80 backdrop-blur-xl border border-white/60 shadow-2xl rounded-[2rem] p-8 relative overflow-hidden">
-                
-                {/* ROLE TOGGLE */}
-                <div className="flex justify-center mb-6">
-                   <div className="bg-slate-100 p-1 rounded-xl flex relative">
-                      <div className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm transition-all duration-300 ${role === 'doctor' ? 'left-[calc(50%+2px)]' : 'left-1'}`}></div>
-                      <button onClick={() => setRole('patient')} className={`relative z-10 px-6 py-1.5 text-sm font-bold transition-colors ${role === 'patient' ? 'text-blue-600' : 'text-slate-500'}`}>Patient</button>
-                      <button onClick={() => setRole('doctor')} className={`relative z-10 px-6 py-1.5 text-sm font-bold transition-colors ${role === 'doctor' ? 'text-blue-600' : 'text-slate-500'}`}>Doctor</button>
-                   </div>
-                </div>
-
-                <div className="text-center mb-6">
-                  {alertMessage ? (
-                     <div className="mb-4 bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-medium animate-fade-in-down">✨ {alertMessage}</div>
-                  ) : (
-                     <h2 className="text-2xl font-bold text-slate-800 font-serif">
-                       {role === 'doctor' ? 'Clinician Portal' : 'Welcome Back'}
-                     </h2>
-                  )}
-                  <p className="text-slate-500 text-sm">
-                    {role === 'doctor' ? 'Secure login for medical practitioners.' : 'Sign in to access your health dashboard.'}
-                  </p>
-                           {errorMessage ? (
-                              <div className="mt-3 bg-rose-50 text-rose-700 px-4 py-2 rounded-xl text-sm font-medium">
-                                 {errorMessage}
-                              </div>
-                           ) : null}
-                </div>
-
-                <form onSubmit={handleLogin} className="space-y-4">
-                   <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 ml-1 uppercase">Email</label>
-                      <input 
-                        type="text" 
-                        name="email" 
-                        value={formData.email} // Controlled input to keep email after signup
-                        placeholder={role === 'doctor' ? "dr.name@hospital.com or phone" : "name@example.com or phone"}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none" 
-                      />
-                   </div>
-                   <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 ml-1 uppercase">Password</label>
-                      <input 
-                        type="password" 
-                        name="password" 
-                        value={formData.password}
-                        placeholder="••••••••"
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none" 
-                      />
-                   </div>
-
-                   <button type="submit" className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transform hover:-translate-y-0.5 transition-all">
-                      {isSubmitting ? 'Please wait...' : (role === 'doctor' ? 'Access Portal' : 'Sign In')}
-                   </button>
-                </form>
-
-                {/* Switch to Signup */}
-                <div className="mt-6 text-center border-t border-slate-100 pt-6">
-                   <p className="text-slate-500 text-sm">
-                      {role === 'doctor' ? 'New Practitioner?' : 'New here?'} 
-                      <button onClick={() => setIsFlipped(true)} className="font-bold text-blue-600 hover:underline ml-1">
-                         Create Account
-                      </button>
-                   </p>
-                </div>
-             </div>
-          </div>
-
-          {/* ==============================
-              BACK: SIGN UP FORM
-          ============================== */}
-          <div className="col-start-1 row-start-1 backface-hidden rotate-y-180 z-10">
-             <div className="bg-gradient-to-b from-blue-50 to-white backdrop-blur-xl border border-blue-200 shadow-2xl rounded-[2rem] p-8 relative overflow-hidden">
-                <div className="text-center mb-6">
-                  <h2 className="text-2xl font-bold text-blue-900 font-serif">
-                     {role === 'doctor' ? 'Join Medical Network' : 'Join AyuSetu'}
-                  </h2>
-                  <p className="text-slate-500 text-sm">
-                     {role === 'doctor' ? 'Register your clinic.' : 'Create your patient profile.'}
-                  </p>
-                  {errorMessage ? (
-                    <div className="mt-3 bg-rose-50 text-rose-700 px-4 py-2 rounded-xl text-sm font-medium">
-                      {errorMessage}
-                    </div>
-                  ) : null}
-                </div>
-                
-                <form onSubmit={handleSignup} className="space-y-3">
-                   <input 
-                     type="text" 
-                     name="name"
-                     onChange={handleChange}
-                     placeholder={role === 'doctor' ? "Dr. Full Name" : "Full Name"} 
-                     className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl outline-none focus:border-blue-500" 
-                   />
-                   <input 
-                     type="email" 
-                     name="email"
-                     onChange={handleChange}
-                     placeholder="Email Address" 
-                     className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl outline-none focus:border-blue-500" 
-                   />
-                   
-                   {/* License ID for Doctors */}
-                   {role === 'doctor' && (
-                      <input 
-                        type="text" 
-                        name="license"
-                        onChange={handleChange}
-                        placeholder="Medical License ID" 
-                        className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl outline-none focus:border-blue-500" 
-                      />
-                   )}
-
-                   <input 
-                     type="password" 
-                     name="password"
-                     onChange={handleChange}
-                     placeholder="Create Password" 
-                     className="w-full px-4 py-3 bg-white border border-blue-100 rounded-xl outline-none focus:border-blue-500" 
-                   />
-
-                   <button className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl shadow-lg mt-2 hover:bg-blue-700 transition-all">
-                      {isSubmitting ? 'Please wait...' : (role === 'doctor' ? 'Register' : 'Create Account')}
-                   </button>
-                </form>
-
-                <div className="mt-6 text-center">
-                   <button onClick={() => setIsFlipped(false)} className="text-sm font-bold text-blue-600 hover:underline">
-                      Back to Sign In
-                   </button>
-                </div>
-             </div>
-          </div>
-
+        <div className="mt-6 text-center text-sm text-slate-600">
+          {isLogin ? 'New user?' : 'Already have an account?'}{' '}
+          <button
+            type="button"
+            onClick={() => {
+              setMode(isLogin ? 'signup' : 'login');
+              setErrorMessage('');
+            }}
+            className="text-blue-600 font-bold hover:underline"
+          >
+            {isLogin ? 'Create account' : 'Sign in'}
+          </button>
         </div>
       </div>
     </div>

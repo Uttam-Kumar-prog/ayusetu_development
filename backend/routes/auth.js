@@ -1,69 +1,111 @@
 const express = require('express');
 const { body } = require('express-validator');
 const {
-  register,
+  signup,
   login,
-  sendOtpCode,
+  googleLogin,
   verifyOtpCode,
+  resendOtp,
+  refreshToken,
+  logout,
+  forgotPassword,
+  verifyForgotPasswordOtp,
+  resetPassword,
   getMe,
   updateProfile,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const validateAuth = require('../middleware/validateAuth');
+
 const router = express.Router();
 
-router.post(
-  '/register',
+const emailValidator = body('email').isEmail().withMessage('email must be valid');
+const signupValidators = [
   body('fullName').trim().notEmpty().withMessage('fullName is required'),
-  body('email').optional().isEmail().withMessage('email must be valid'),
+  emailValidator,
   body('phone').optional().isLength({ min: 10, max: 15 }).withMessage('phone must be 10-15 digits'),
   body('password').isString().isLength({ min: 6 }).withMessage('password must be at least 6 characters'),
   body('role').optional().isIn(['patient', 'doctor', 'pharmacy']).withMessage('invalid role'),
-  body().custom((value) => {
-    if (!value.email && !value.phone) {
-      throw new Error('Either email or phone is required');
-    }
-    return true;
-  }),
-  validateAuth,
-  register
+];
+
+router.post(
+  '/signup',
+  ...signupValidators,
+  validate,
+  signup
 );
 
 router.post(
   '/login',
-  body('email').optional().isEmail().withMessage('email must be valid'),
-  body('phone').optional().isLength({ min: 10, max: 15 }).withMessage('phone must be 10-15 digits'),
+  emailValidator,
   body('password').isString().notEmpty().withMessage('password is required'),
-  body().custom((value) => {
-    if (!value.email && !value.phone) {
-      throw new Error('Either email or phone is required');
-    }
-    return true;
-  }),
-  validateAuth,
+  validate,
   login
 );
 
 router.post(
-  '/send-otp',
-  body('phone').isLength({ min: 10, max: 15 }).withMessage('phone must be 10-15 digits'),
-  body('purpose').optional().isIn(['login', 'register', 'password_reset']).withMessage('invalid purpose'),
+  '/google-login',
+  body('googleToken').optional().isString().notEmpty(),
+  body('token').optional().isString().notEmpty(),
+  body('credential').optional().isString().notEmpty(),
+  body().custom((value) => {
+    if (!value.googleToken && !value.token && !value.credential) {
+      throw new Error('googleToken is required');
+    }
+    return true;
+  }),
   validate,
-  sendOtpCode
+  googleLogin
 );
 
 router.post(
   '/verify-otp',
-  body('phone').isLength({ min: 10, max: 15 }).withMessage('phone must be 10-15 digits'),
-  body('code').isLength({ min: 4, max: 6 }).withMessage('OTP code must be 4-6 digits'),
-  body('purpose').optional().isIn(['login', 'register', 'password_reset']).withMessage('invalid purpose'),
-  body('role').optional().isIn(['patient', 'doctor', 'pharmacy']).withMessage('invalid role'),
+  body('otpFlowToken').isString().notEmpty().withMessage('otpFlowToken is required'),
+  body('otp').isString().isNumeric().isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
   validate,
   verifyOtpCode
 );
 
+router.post(
+  '/resend-otp',
+  body('otpFlowToken').isString().notEmpty().withMessage('otpFlowToken is required'),
+  validate,
+  resendOtp
+);
+
+router.post(
+  '/refresh-token',
+  body('refreshToken').isString().notEmpty().withMessage('refreshToken is required'),
+  validate,
+  refreshToken
+);
+
+router.post('/logout', body('refreshToken').optional().isString(), validate, logout);
+
+router.post('/forgot-password', emailValidator, validate, forgotPassword);
+
+router.post(
+  '/verify-forgot-password-otp',
+  body('otpFlowToken').isString().notEmpty().withMessage('otpFlowToken is required'),
+  body('otp').isString().isNumeric().isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
+  validate,
+  verifyForgotPasswordOtp
+);
+
+router.post(
+  '/reset-password',
+  body('resetToken').isString().notEmpty().withMessage('resetToken is required'),
+  body('newPassword').isString().isLength({ min: 6 }).withMessage('newPassword must be at least 6 characters'),
+  body('confirmPassword').isString().isLength({ min: 6 }).withMessage('confirmPassword must be at least 6 characters'),
+  validate,
+  resetPassword
+);
+
+// Backward-compatible aliases
+router.post('/register', ...signupValidators, validate, signup);
+
 router.get('/me', protect, getMe);
+
 router.patch(
   '/me',
   protect,

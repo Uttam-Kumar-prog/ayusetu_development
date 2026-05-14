@@ -13,6 +13,8 @@ import SymptomInput from "./pages/SymptomInput";
 import Results from "./pages/Results";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import OtpVerification from "./pages/OtpVerification";
+import ForgotPassword from "./pages/ForgotPassword";
 import About from "./pages/About";
 import KnowledgeBase from "./pages/KnowledgeBase";
 import Services from "./pages/Services";
@@ -24,7 +26,7 @@ import ConsultationRoom from "./pages/ConsultationRoom";
 
 function AppContent() {
   const location = useLocation();
-  const hiddenChatbotPaths = ["/login", "/register", "/signup"];
+  const hiddenChatbotPaths = ["/login", "/register", "/signup", "/verify-otp", "/forgot-password"];
   const hideChatbot = hiddenChatbotPaths.some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
 
   return (
@@ -37,6 +39,8 @@ function AppContent() {
           
           {/* Authentication Page */}
           <Route path="/login" element={<Login />} />
+          <Route path="/verify-otp" element={<OtpVerification />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           
           {/* Patient App Features */}
           <Route

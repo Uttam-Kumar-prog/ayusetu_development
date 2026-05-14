@@ -7,6 +7,13 @@ const userSchema = new mongoose.Schema({
   email: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
   phone: { type: String, unique: true, sparse: true, trim: true },
   password: { type: String, minlength: 6 },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google'],
+    default: 'local',
+    index: true,
+  },
+  googleSub: { type: String, default: '', index: true },
   role: {
     type: String,
     enum: Object.values(roles),
@@ -15,6 +22,9 @@ const userSchema = new mongoose.Schema({
   },
   isVerified: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
+  failedLoginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date, default: null },
+  lastPasswordChangedAt: { type: Date, default: null },
   profile: {
     age: { type: Number, min: 0, max: 120 },
     gender: { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
@@ -56,6 +66,10 @@ userSchema.pre('save', async function (next) {
 userSchema.methods.comparePassword = function comparePassword(plainTextPassword) {
   if (!this.password) return false;
   return bcrypt.compare(plainTextPassword, this.password);
+};
+
+userSchema.methods.isAccountLocked = function isAccountLocked() {
+  return Boolean(this.lockUntil && this.lockUntil > new Date());
 };
 
 module.exports = mongoose.model('User', userSchema);

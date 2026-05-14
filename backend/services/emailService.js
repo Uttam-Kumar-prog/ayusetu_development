@@ -53,6 +53,31 @@ async function send({ to, subject, html }) {
   return t.sendMail({ from: `"AyuSetu Health" <${process.env.EMAIL_USER}>`, to, subject, html });
 }
 
+exports.sendOtpEmail = async ({ email, code, purpose = 'login' }) => {
+  if (!email) return;
+  const purposeLabelMap = {
+    login: 'Sign in verification',
+    google_login: 'Google sign in verification',
+    signup: 'Account verification',
+    forgot_password: 'Password reset verification',
+    resend: 'Verification',
+  };
+  const purposeLabel = purposeLabelMap[purpose] || 'Verification';
+  return send({
+    to: email,
+    subject: `${purposeLabel} OTP`,
+    html: wrap(`
+      <h2>${purposeLabel}</h2>
+      <p>Use the following one-time password to continue:</p>
+      <div class="box" style="text-align:center">
+        <p style="font-size:30px;font-weight:800;letter-spacing:6px;margin:0">${code}</p>
+      </div>
+      <p>This OTP expires in 5 minutes and can be used only once.</p>
+      <div class="disc">If you did not request this, please ignore this email.</div>
+    `),
+  });
+};
+
 exports.bookingConfirmToPatient = async ({ patient, doctor, appt }) => {
   if (!patient?.email) return;
   const isVideo = appt.consultationType === 'telemedicine';
