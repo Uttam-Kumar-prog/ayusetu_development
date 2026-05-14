@@ -39,6 +39,7 @@ export default function ConsultationRoom() {
   const heartbeatTimerRef = useRef(null);
   const lastSignalAtRef = useRef(null);
   const sessionStartAtRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -50,6 +51,9 @@ export default function ConsultationRoom() {
   const politeRef = useRef(false);
   const micOnRef = useRef(true);
   const camOnRef = useRef(true);
+  const callStatusRef = useRef('idle');
+  const remoteStreamSeenRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
 
   const isDoctor = appt?.userRole === 'doctor';
   const myUserId = String(user?._id || user?.id || '');
@@ -74,7 +78,12 @@ export default function ConsultationRoom() {
       pcRef.current = null;
     }
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    remoteStreamSeenRef.current = false;
   }, []);
+
+  useEffect(() => {
+    callStatusRef.current = callStatus;
+  }, [callStatus]);
 
   const publishSignal = useCallback(async (type, payload = {}) => {
     if (!roomId) return;
@@ -127,6 +136,8 @@ export default function ConsultationRoom() {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = stream;
       }
+      remoteStreamSeenRef.current = true;
+      reconnectAttemptsRef.current = 0;
     };
 
     pc.onicecandidate = ({ candidate }) => {
@@ -138,6 +149,9 @@ export default function ConsultationRoom() {
     pc.oniceconnectionstatechange = () => {
       if (['failed', 'disconnected'].includes(pc.iceConnectionState)) {
         showToast('Connection unstable. Retrying...');
+        try {
+          pc.restartIce();
+        } catch {}
       }
     };
 
@@ -177,7 +191,7 @@ export default function ConsultationRoom() {
     if (signal.type === 'peer-joined') {
       setPeerPresent(true);
       if (signal.fromUserName) setPeerName(signal.fromUserName);
-      if (callStatus === 'live') createPeerConnection();
+      if (callStatusRef.current === 'live') createPeerConnection();
       showToast(`${signal.fromUserName || 'Participant'} has joined the room`);
       return;
     }
@@ -192,7 +206,7 @@ export default function ConsultationRoom() {
     if (signal.type === 'presence-heartbeat') {
       setPeerPresent(true);
       if (signal.fromUserName) setPeerName(signal.fromUserName);
-      if (callStatus === 'live') createPeerConnection();
+      if (callStatusRef.current === 'live') createPeerConnection();
       if (typeof signal?.payload?.audio === 'boolean') setPeerMicOn(signal.payload.audio);
       if (typeof signal?.payload?.video === 'boolean') setPeerCamOn(signal.payload.video);
       return;
@@ -262,7 +276,7 @@ export default function ConsultationRoom() {
         if (!ignoreOfferRef.current) console.error('[WebRTC] ICE error', iceError);
       }
     }
-  }, [appt?.userRole, callStatus, closePeer, createPeerConnection, myUserId, publishSignal]);
+  }, [appt?.userRole, closePeer, createPeerConnection, myUserId, publishSignal]);
 
   useEffect(() => {
     processSignalRef.current = processSignal;
@@ -292,7 +306,9 @@ export default function ConsultationRoom() {
         });
         const signals = data?.signals || [];
         for (const signal of signals) {
-          await processSignal(signal);
+          if (processSignalRef.current) {
+            await processSignalRef.current(signal);
+          }
         }
         if (signals.length > 0) {
           lastSignalAtRef.current = signals[signals.length - 1].createdAt;
@@ -326,6 +342,7 @@ export default function ConsultationRoom() {
     return () => {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       publishSignal('peer-left');
       closePeer();
       stopTracks();
@@ -336,6 +353,31 @@ export default function ConsultationRoom() {
     if (callStatus === 'live' && peerPresent) {
       createPeerConnection();
     }
+  }, [callStatus, peerPresent, createPeerConnection]);
+
+  useEffect(() => {
+    if (callStatus !== 'live' || !peerPresent) {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      reconnectAttemptsRef.current = 0;
+      return;
+    }
+
+    const tryRecoverRemoteVideo = () => {
+      const pc = createPeerConnection();
+      const hasRemote = Boolean(remoteVideoRef.current?.srcObject) || remoteStreamSeenRef.current;
+      if (hasRemote) return;
+      if (reconnectAttemptsRef.current >= 3) return;
+
+      reconnectAttemptsRef.current += 1;
+      try {
+        pc.restartIce();
+      } catch {}
+    };
+
+    reconnectTimerRef.current = setTimeout(tryRecoverRemoteVideo, 4500);
+    return () => {
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    };
   }, [callStatus, peerPresent, createPeerConnection]);
 
   const handleStartCall = useCallback(async () => {
