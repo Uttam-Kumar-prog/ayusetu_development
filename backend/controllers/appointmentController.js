@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const Appointment = require('../models/Appointment');
+const AppointmentPayment = require('../models/AppointmentPayment');
 const DoctorAvailability = require('../models/DoctorAvailability');
 const User = require('../models/User');
 const SymptomHistory = require('../models/SymptomHistory');
@@ -10,8 +11,110 @@ const ApiError = require('../utils/ApiError');
 const { createNotification } = require('../services/notificationService');
 const email = require('../services/emailService');
 const { structureSymptoms } = require('../services/aiSymptomService');
+const {
+  isRazorpayEnabled,
+  createOrder: createRazorpayOrder,
+  verifyPaymentSignature,
+} = require('../services/razorpayService');
 
 const genCode = () => `APT-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+const paymentExpiryMinutes = Math.max(3, Number(process.env.PAYMENT_ORDER_EXPIRY_MINUTES || 15));
+
+const resolveConsultationFee = (doctor) => {
+  const fee = Number(doctor?.doctorProfile?.consultationFee || 0);
+  if (!Number.isFinite(fee) || fee < 0) return 0;
+  return Math.round(fee);
+};
+
+const buildPaymentPayload = ({
+  required = false,
+  amount = 0,
+  currency = 'INR',
+  status = 'FREE',
+  orderId = '',
+  paymentId = '',
+  signature = '',
+}) => ({
+  required,
+  provider: required ? 'RAZORPAY' : 'NONE',
+  status,
+  amount,
+  currency,
+  orderId,
+  paymentId,
+  signature,
+  paidAt: status === 'PAID' ? new Date() : null,
+});
+
+const saveAppointmentAndNotify = async ({
+  req,
+  doctor,
+  date,
+  time,
+  consultationType,
+  symptomSummary,
+  payment,
+}) => {
+  const lock = await DoctorAvailability.findOneAndUpdate(
+    { doctorId: doctor._id, date, 'slots.time': time, 'slots.status': 'AVAILABLE' },
+    { $set: { 'slots.$.status': 'BOOKED', 'slots.$.bookedBy': req.user._id } },
+    { new: true }
+  );
+  if (!lock) throw new ApiError(409, 'Slot no longer available. Please choose another.');
+
+  const selectedSlot = lock.slots.find((slot) => slot.time === time);
+  const roomId = `room-${crypto.randomUUID()}`;
+
+  let aiSummary = '';
+  if (symptomSummary.trim()) {
+    try {
+      const structured = await structureSymptoms(symptomSummary);
+      if (structured?.structuredSummary) aiSummary = structured.structuredSummary;
+    } catch {}
+  }
+
+  const appointment = await Appointment.create({
+    appointmentCode: genCode(),
+    patientId: req.user._id,
+    doctorId: doctor._id,
+    slotDate: date,
+    slotTime: time,
+    startAt: selectedSlot.startAt,
+    endAt: selectedSlot.endAt,
+    consultationType,
+    symptomSummary,
+    aiSymptomSummary: aiSummary,
+    payment,
+    meeting: { roomId, joinUrl: `${process.env.WEB_URL || 'http://localhost:5173'}/consultation/${roomId}` },
+  });
+
+  await DoctorAvailability.updateOne(
+    { doctorId: doctor._id, date, 'slots.time': time },
+    { $set: { 'slots.$.appointmentId': appointment._id } }
+  );
+
+  const patient = req.user;
+  const displaySummary = aiSummary || symptomSummary;
+
+  Promise.allSettled([
+    createNotification({
+      userId: patient._id,
+      type: 'APPOINTMENT_CONFIRMED',
+      title: 'Appointment booked',
+      body: `Consultation with Dr. ${doctor.fullName} on ${date} at ${time}`,
+    }),
+    createNotification({
+      userId: doctor._id,
+      type: 'NEW_APPOINTMENT',
+      title: 'New appointment',
+      body: `${patient.fullName} booked on ${date} at ${time}`,
+    }),
+    email.bookingConfirmToPatient({ patient, doctor, appt: appointment }),
+    email.bookingNotifyDoctor({ patient, doctor, appt: appointment, symptomSummary: displaySummary }),
+  ]);
+
+  return appointment;
+};
 
 const resolveMeetingAccess = async (roomId, user) => {
   const appointment = await Appointment.findOne({ 'meeting.roomId': roomId })
@@ -65,59 +168,192 @@ exports.bookAppointment = asyncHandler(async (req, res) => {
 
   const doctor = await User.findOne({ _id: doctorId, role: 'doctor', isActive: true });
   if (!doctor) throw new ApiError(404, 'Doctor not found');
-
-  const lock = await DoctorAvailability.findOneAndUpdate(
-    { doctorId, date, 'slots.time': time, 'slots.status': 'AVAILABLE' },
-    { $set: { 'slots.$.status': 'BOOKED', 'slots.$.bookedBy': req.user._id } },
-    { new: true }
-  );
-  if (!lock) throw new ApiError(409, 'Slot no longer available. Please choose another.');
-
-  const selectedSlot = lock.slots.find(s => s.time === time);
-  const roomId = `room-${crypto.randomUUID()}`;
-
-  // AI-structure symptoms in background (won't block response)
-  let aiSummary = '';
-  if (symptomSummary.trim()) {
-    try {
-      const structured = await structureSymptoms(symptomSummary);
-      if (structured?.structuredSummary) aiSummary = structured.structuredSummary;
-    } catch {}
+  const consultationFee = resolveConsultationFee(doctor);
+  const paymentRequired = consultationFee > 0 && isRazorpayEnabled();
+  if (paymentRequired) {
+    throw new ApiError(402, 'Payment required. Please complete payment to book this appointment.');
   }
 
-  const appointment = await Appointment.create({
-    appointmentCode: genCode(),
-    patientId: req.user._id,
-    doctorId,
-    slotDate: date,
-    slotTime: time,
-    startAt: selectedSlot.startAt,
-    endAt: selectedSlot.endAt,
+  const appointment = await saveAppointmentAndNotify({
+    req,
+    doctor,
+    date,
+    time,
     consultationType,
     symptomSummary,
-    aiSymptomSummary: aiSummary,
-    meeting: { roomId, joinUrl: `${process.env.WEB_URL || 'http://localhost:5173'}/consultation/${roomId}` },
+    payment: buildPaymentPayload({
+      required: false,
+      amount: consultationFee,
+      status: 'FREE',
+    }),
   });
 
-  await DoctorAvailability.updateOne(
-    { doctorId, date, 'slots.time': time },
-    { $set: { 'slots.$.appointmentId': appointment._id } }
-  );
-
-  const patient = req.user;
-  const displaySummary = aiSummary || symptomSummary;
-
-  // Notifications fire-and-forget
-  Promise.allSettled([
-    createNotification({ userId: patient._id, type: 'APPOINTMENT_CONFIRMED', title: 'Appointment booked',
-      body: `Consultation with Dr. ${doctor.fullName} on ${date} at ${time}` }),
-    createNotification({ userId: doctor._id, type: 'NEW_APPOINTMENT', title: 'New appointment',
-      body: `${patient.fullName} booked on ${date} at ${time}` }),
-    email.bookingConfirmToPatient({ patient, doctor, appt: appointment }),
-    email.bookingNotifyDoctor({ patient, doctor, appt: appointment, symptomSummary: displaySummary }),
-  ]);
-
   return res.status(201).json({ success: true, message: 'Appointment booked successfully', appointment });
+});
+
+// POST /api/appointments/payment/order
+exports.createAppointmentPaymentOrder = asyncHandler(async (req, res) => {
+  const { doctorId, date, time, consultationType = 'telemedicine', symptomSummary = '' } = req.body;
+  if (!doctorId || !date || !time) throw new ApiError(400, 'doctorId, date and time are required');
+
+  const doctor = await User.findOne({ _id: doctorId, role: 'doctor', isActive: true }).select(
+    'fullName doctorProfile.consultationFee'
+  );
+  if (!doctor) throw new ApiError(404, 'Doctor not found');
+
+  const consultationFee = resolveConsultationFee(doctor);
+  if (consultationFee <= 0) {
+    throw new ApiError(400, 'Doctor consultation fee is not available for online payment.');
+  }
+  if (!isRazorpayEnabled()) {
+    throw new ApiError(503, 'Payment service is currently unavailable.');
+  }
+
+  const slotAvailable = await DoctorAvailability.findOne({
+    doctorId,
+    date,
+    slots: { $elemMatch: { time, status: 'AVAILABLE' } },
+  }).select('_id');
+  if (!slotAvailable) {
+    throw new ApiError(409, 'Selected slot is not available. Please choose another slot.');
+  }
+
+  const receipt = `apt_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+  const order = await createRazorpayOrder({
+    amountPaise: consultationFee * 100,
+    currency: 'INR',
+    receipt,
+    notes: {
+      patientId: String(req.user._id),
+      doctorId: String(doctor._id),
+      slotDate: date,
+      slotTime: time,
+    },
+  });
+
+  const intent = await AppointmentPayment.create({
+    patientId: req.user._id,
+    doctorId: doctor._id,
+    slotDate: date,
+    slotTime: time,
+    consultationType,
+    symptomSummary,
+    amount: consultationFee,
+    currency: 'INR',
+    receipt,
+    razorpayOrderId: order.id,
+    status: 'CREATED',
+    expiresAt: new Date(Date.now() + paymentExpiryMinutes * 60 * 1000),
+  });
+
+  return res.status(201).json({
+    success: true,
+    paymentIntentId: intent._id,
+    doctor: { id: doctor._id, fullName: doctor.fullName },
+    razorpay: {
+      keyId: process.env.RAZORPAY_KEY_ID,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      receipt: order.receipt,
+    },
+    expiresAt: intent.expiresAt,
+  });
+});
+
+// POST /api/appointments/payment/verify
+exports.verifyAppointmentPaymentAndBook = asyncHandler(async (req, res) => {
+  const {
+    paymentIntentId,
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+  } = req.body;
+
+  const intent = await AppointmentPayment.findOne({
+    _id: paymentIntentId,
+    patientId: req.user._id,
+  });
+  if (!intent) throw new ApiError(404, 'Payment session not found.');
+
+  if (intent.status === 'VERIFIED') {
+    const existingAppointment = await Appointment.findOne({
+      patientId: req.user._id,
+      doctorId: intent.doctorId,
+      slotDate: intent.slotDate,
+      slotTime: intent.slotTime,
+      'payment.orderId': intent.razorpayOrderId,
+    });
+    if (existingAppointment) {
+      return res.json({
+        success: true,
+        message: 'Appointment already booked successfully.',
+        appointment: existingAppointment,
+      });
+    }
+  }
+
+  if (intent.status !== 'CREATED') {
+    throw new ApiError(400, 'This payment session is no longer active.');
+  }
+  if (intent.expiresAt <= new Date()) {
+    intent.status = 'EXPIRED';
+    intent.failureReason = 'Payment window expired';
+    await intent.save();
+    throw new ApiError(400, 'Payment session expired. Please try booking again.');
+  }
+  if (intent.razorpayOrderId !== razorpayOrderId) {
+    throw new ApiError(400, 'Payment order mismatch.');
+  }
+
+  const isValidSignature = verifyPaymentSignature({
+    orderId: razorpayOrderId,
+    paymentId: razorpayPaymentId,
+    signature: razorpaySignature,
+  });
+
+  if (!isValidSignature) {
+    intent.status = 'FAILED';
+    intent.failureReason = 'Invalid payment signature';
+    await intent.save();
+    throw new ApiError(400, 'Payment verification failed.');
+  }
+
+  const doctor = await User.findOne({
+    _id: intent.doctorId,
+    role: 'doctor',
+    isActive: true,
+  });
+  if (!doctor) throw new ApiError(404, 'Doctor not found');
+
+  const appointment = await saveAppointmentAndNotify({
+    req,
+    doctor,
+    date: intent.slotDate,
+    time: intent.slotTime,
+    consultationType: intent.consultationType,
+    symptomSummary: intent.symptomSummary || '',
+    payment: buildPaymentPayload({
+      required: true,
+      amount: intent.amount,
+      currency: intent.currency,
+      status: 'PAID',
+      orderId: razorpayOrderId,
+      paymentId: razorpayPaymentId,
+      signature: razorpaySignature,
+    }),
+  });
+
+  intent.status = 'VERIFIED';
+  intent.razorpayPaymentId = razorpayPaymentId;
+  intent.razorpaySignature = razorpaySignature;
+  await intent.save();
+
+  return res.status(201).json({
+    success: true,
+    message: 'Payment verified and appointment booked successfully.',
+    appointment,
+  });
 });
 
 // GET /api/appointments/mine

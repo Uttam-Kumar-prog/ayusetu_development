@@ -22,6 +22,17 @@ const appointmentSchema = new mongoose.Schema(
       roomId:  { type: String, required: true },
       joinUrl: { type: String, required: true },
     },
+    payment: {
+      required: { type: Boolean, default: false },
+      provider: { type: String, enum: ['RAZORPAY', 'NONE'], default: 'NONE' },
+      status: { type: String, enum: ['FREE', 'PAID', 'PENDING', 'FAILED'], default: 'FREE' },
+      amount: { type: Number, default: 0 },
+      currency: { type: String, default: 'INR' },
+      orderId: { type: String, default: '' },
+      paymentId: { type: String, default: '' },
+      signature: { type: String, default: '' },
+      paidAt: { type: Date, default: null },
+    },
     status: {
       type: String,
       enum: Object.values(APPOINTMENT),

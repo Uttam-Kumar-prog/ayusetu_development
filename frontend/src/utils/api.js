@@ -107,6 +107,8 @@ export const doctorsAPI = {
 
 export const appointmentsAPI = {
   create: (data) => api.post('/appointments', data),
+  createPaymentOrder: (data) => api.post('/appointments/payment/order', data),
+  verifyPaymentAndBook: (data) => api.post('/appointments/payment/verify', data),
   mine: () => api.get('/appointments/mine'),
   roomAccess: (roomId) => api.get(`/appointments/room/${roomId}/access`),
   roomSignals: (roomId, params = {}) => api.get(`/appointments/room/${roomId}/signals`, { params }),

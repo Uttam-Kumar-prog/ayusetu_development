@@ -32,6 +32,25 @@ const getNextAvailableDate = (availableDateMap, preferredDate) => {
   return nextUpcoming || availableDates[0] || preferredDate;
 };
 
+const loadRazorpayScript = () =>
+  new Promise((resolve, reject) => {
+    if (window.Razorpay) return resolve();
+    const existingScript = document.querySelector('script[data-razorpay="true"]');
+    if (existingScript) {
+      existingScript.addEventListener('load', () => resolve());
+      existingScript.addEventListener('error', () => reject(new Error('Unable to load payment gateway script')));
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.dataset.razorpay = 'true';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load payment gateway script'));
+    document.body.appendChild(script);
+  });
+
 export default function DoctorProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -105,11 +124,18 @@ export default function DoctorProfile() {
       return;
     }
 
+    if (!selectedSlot) {
+      setBookingError('Please select an available slot to continue.');
+      return;
+    }
+
     setIsBooking(true);
     setBookingError('');
 
     try {
-      await appointmentsAPI.create({
+      await loadRazorpayScript();
+
+      const { data: orderData } = await appointmentsAPI.createPaymentOrder({
         doctorId: id,
         date: selectedDate,
         time: selectedSlot,
@@ -117,9 +143,63 @@ export default function DoctorProfile() {
         symptomSummary: formData.reason,
       });
 
+      const razorpay = orderData?.razorpay;
+      if (!razorpay?.keyId || !razorpay?.orderId) {
+        throw new Error('Payment gateway unavailable');
+      }
+
+      await new Promise((resolve, reject) => {
+        const checkout = new window.Razorpay({
+          key: razorpay.keyId,
+          amount: razorpay.amount,
+          currency: razorpay.currency || 'INR',
+          name: 'AyuSetu',
+          description: `Consultation with ${doctor?.fullName || 'Doctor'}`,
+          order_id: razorpay.orderId,
+          prefill: {
+            name: user?.fullName || '',
+            email: user?.email || '',
+            contact: user?.phone || '',
+          },
+          notes: {
+            doctor: doctor?.fullName || '',
+            date: selectedDate,
+            time: selectedSlot,
+          },
+          theme: {
+            color: '#2563eb',
+          },
+          modal: {
+            ondismiss: () => {
+              reject(new Error('Payment was cancelled.'));
+            },
+          },
+          handler: async (response) => {
+            try {
+              await appointmentsAPI.verifyPaymentAndBook({
+                paymentIntentId: orderData?.paymentIntentId,
+                razorpayOrderId: response?.razorpay_order_id,
+                razorpayPaymentId: response?.razorpay_payment_id,
+                razorpaySignature: response?.razorpay_signature,
+              });
+              resolve();
+            } catch (verificationError) {
+              reject(
+                new Error(
+                  verificationError?.response?.data?.message ||
+                    'Payment was successful, but booking confirmation failed.'
+                )
+              );
+            }
+          },
+        });
+
+        checkout.open();
+      });
+
       setBookingStep(2);
     } catch (apiError) {
-      setBookingError(apiError?.response?.data?.message || 'Booking failed. Please choose another slot.');
+      setBookingError(apiError?.response?.data?.message || apiError?.message || 'Payment failed. Please try again.');
     } finally {
       setIsBooking(false);
     }
@@ -313,7 +393,7 @@ export default function DoctorProfile() {
                     disabled={!selectedSlot || isBooking}
                     className="w-full py-4 bg-slate-900 text-white font-bold rounded-xl shadow-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isBooking ? 'Confirming...' : 'Confirm Appointment'}
+                    {isBooking ? 'Processing Payment...' : 'Pay & Confirm Appointment'}
                   </button>
                 </form>
               </div>

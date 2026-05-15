@@ -5,6 +5,7 @@ const {
   startConsultation, remindPatient, getMeetingRoomAccess,
   getDoctorCaseSummary, structureAppointmentSymptoms,
   publishRoomSignal, getRoomSignals,
+  createAppointmentPaymentOrder, verifyAppointmentPaymentAndBook,
 } = require('../controllers/appointmentController');
 const { protect, authorize } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -19,6 +20,23 @@ router.post('/',
   body('consultationType').optional().isIn(['telemedicine','ayurveda','followup']).withMessage('invalid consultationType'),
   body('symptomSummary').optional().isString().isLength({ max: 2000 }),
   validate, bookAppointment);
+
+router.post('/payment/order',
+  protect, authorize('patient', 'admin'),
+  body('doctorId').isMongoId().withMessage('doctorId must be a valid id'),
+  body('date').matches(/^\d{4}-\d{2}-\d{2}$/).withMessage('date must be YYYY-MM-DD'),
+  body('time').matches(/^([01]\d|2[0-3]):[0-5]\d$/).withMessage('time must be HH:mm'),
+  body('consultationType').optional().isIn(['telemedicine','ayurveda','followup']).withMessage('invalid consultationType'),
+  body('symptomSummary').optional().isString().isLength({ max: 2000 }),
+  validate, createAppointmentPaymentOrder);
+
+router.post('/payment/verify',
+  protect, authorize('patient', 'admin'),
+  body('paymentIntentId').isMongoId().withMessage('paymentIntentId must be a valid id'),
+  body('razorpayOrderId').isString().trim().notEmpty().withMessage('razorpayOrderId is required'),
+  body('razorpayPaymentId').isString().trim().notEmpty().withMessage('razorpayPaymentId is required'),
+  body('razorpaySignature').isString().trim().notEmpty().withMessage('razorpaySignature is required'),
+  validate, verifyAppointmentPaymentAndBook);
 
 router.get('/mine', protect, authorize('patient','doctor','admin'), listMyAppointments);
 

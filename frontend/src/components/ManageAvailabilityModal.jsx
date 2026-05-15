@@ -13,7 +13,7 @@ const toDateValue = (date) => {
 };
 
 export default function ManageAvailabilityModal({ onClose, doctorId: doctorIdProp }) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const doctorId = doctorIdProp || user?._id || user?.id || '';
 
   const [date, setDate] = useState(toDateValue(new Date()));
@@ -23,6 +23,9 @@ export default function ManageAvailabilityModal({ onClose, doctorId: doctorIdPro
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [profileFee, setProfileFee] = useState(String(Math.max(0, Number(user?.doctorProfile?.consultationFee || 0))));
+  const [profileLocation, setProfileLocation] = useState(String(user?.doctorProfile?.location || ''));
+  const [profileSaving, setProfileSaving] = useState(false);
 
   useEffect(() => {
     if (!doctorId) return;
@@ -112,6 +115,43 @@ export default function ManageAvailabilityModal({ onClose, doctorId: doctorIdPro
     }
   };
 
+  const handleSavePracticeDetails = async () => {
+    const normalizedFee = Number(profileFee);
+    if (!Number.isFinite(normalizedFee) || normalizedFee < 0) {
+      setError('Please enter a valid consultation fee.');
+      setSuccess('');
+      return;
+    }
+
+    if (!String(profileLocation || '').trim()) {
+      setError('Please enter a clinic location.');
+      setSuccess('');
+      return;
+    }
+
+    setProfileSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await doctorsAPI.updateMyProfile({
+        consultationFee: Math.round(normalizedFee),
+        location: String(profileLocation).trim(),
+      });
+      updateUser({
+        ...user,
+        doctorProfile: {
+          ...(user?.doctorProfile || {}),
+          ...(data?.doctorProfile || {}),
+        },
+      });
+      setSuccess('Consultation fee and location updated.');
+    } catch (apiError) {
+      setError(apiError?.response?.data?.message || 'Could not update fee and location.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
@@ -124,6 +164,44 @@ export default function ManageAvailabilityModal({ onClose, doctorId: doctorIdPro
         {success && <div className="bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-3 text-sm mb-4">{success}</div>}
 
         <div className="space-y-5">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-sm font-bold text-slate-700 uppercase mb-3">Practice Details</h4>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Consultation Fee (INR)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={profileFee}
+                  onChange={(e) => setProfileFee(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-green-500"
+                  placeholder="e.g. 500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Location</label>
+                <input
+                  type="text"
+                  value={profileLocation}
+                  onChange={(e) => setProfileLocation(e.target.value)}
+                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-green-500"
+                  placeholder="City, State"
+                />
+              </div>
+            </div>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={handleSavePracticeDetails}
+                disabled={profileSaving}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {profileSaving ? 'Saving...' : 'Save Practice Details'}
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Select Date</label>
             <input
