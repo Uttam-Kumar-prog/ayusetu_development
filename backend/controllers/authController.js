@@ -70,6 +70,7 @@ const issueOtpChallenge = async ({ user, purpose, req, metadata = {} }) => {
   if (otpResult.throttled) {
     return {
       message: `OTP recently sent. Please wait ${otpResult.waitSeconds}s before requesting again.`,
+      purpose,
       otpFlowToken: signOtpFlowToken({
         userId: user._id,
         email: user.email,
@@ -94,6 +95,7 @@ const issueOtpChallenge = async ({ user, purpose, req, metadata = {} }) => {
 
   return {
     message: 'OTP sent to your email address.',
+    purpose,
     otpFlowToken: signOtpFlowToken({
       userId: user._id,
       email: user.email,
@@ -132,7 +134,20 @@ exports.signup = asyncHandler(async (req, res) => {
   }
 
   const existing = await User.findOne({ email: normalizedEmail });
-  if (existing) throw new ApiError(409, 'User with this email already exists');
+  if (existing) {
+    if (!existing.isVerified && existing.authProvider === 'local') {
+      const challenge = await issueOtpChallenge({ user: existing, purpose: 'signup', req, metadata: { source: 'signup_retry' } });
+      return res.status(200).json({
+        success: true,
+        message: challenge.message,
+        purpose: challenge.purpose,
+        otpFlowToken: challenge.otpFlowToken,
+        expiresAt: challenge.expiresAt,
+        resendAfterSeconds: challenge.resendAfterSeconds,
+      });
+    }
+    throw new ApiError(409, 'User with this email already exists');
+  }
 
   const user = await User.create({
     fullName,
@@ -141,7 +156,7 @@ exports.signup = asyncHandler(async (req, res) => {
     password,
     role: normalizedRole,
     authProvider: 'local',
-    isVerified: true,
+    isVerified: false,
   });
 
   await LoginProvider.create({
@@ -156,6 +171,7 @@ exports.signup = asyncHandler(async (req, res) => {
   return res.status(201).json({
     success: true,
     message: challenge.message,
+    purpose: challenge.purpose,
     otpFlowToken: challenge.otpFlowToken,
     expiresAt: challenge.expiresAt,
     resendAfterSeconds: challenge.resendAfterSeconds,
@@ -196,6 +212,19 @@ exports.login = asyncHandler(async (req, res) => {
   }
 
   await resetLoginFailureCounter(user);
+
+  if (!user.isVerified) {
+    const challenge = await issueOtpChallenge({ user, purpose: 'signup', req, metadata: { source: 'login_unverified' } });
+    return res.status(200).json({
+      success: true,
+      message: 'Your account is not verified yet. Please verify with OTP to continue.',
+      purpose: challenge.purpose,
+      otpFlowToken: challenge.otpFlowToken,
+      expiresAt: challenge.expiresAt,
+      resendAfterSeconds: challenge.resendAfterSeconds,
+    });
+  }
+
   user.lastLoginAt = new Date();
   await user.save();
 
@@ -204,6 +233,7 @@ exports.login = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     message: challenge.message,
+    purpose: challenge.purpose,
     otpFlowToken: challenge.otpFlowToken,
     expiresAt: challenge.expiresAt,
     resendAfterSeconds: challenge.resendAfterSeconds,
@@ -246,6 +276,7 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     message: challenge.message,
+    purpose: challenge.purpose,
     otpFlowToken: challenge.otpFlowToken,
     expiresAt: challenge.expiresAt,
     resendAfterSeconds: challenge.resendAfterSeconds,
@@ -279,6 +310,9 @@ exports.verifyOtpCode = asyncHandler(async (req, res) => {
   }
 
   await resetLoginFailureCounter(user);
+  if (decoded.purpose === 'signup' && !user.isVerified) {
+    user.isVerified = true;
+  }
   user.lastLoginAt = new Date();
   await user.save();
 
@@ -334,6 +368,7 @@ exports.resendOtp = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     message: challenge.message,
+    purpose: challenge.purpose,
     otpFlowToken: challenge.otpFlowToken,
     expiresAt: challenge.expiresAt,
     resendAfterSeconds: challenge.resendAfterSeconds,

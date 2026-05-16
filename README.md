@@ -84,6 +84,9 @@ Use cases:
 - User with mild headache gets lifestyle/home remedy guidance.
 - High-severity user receives warning and gets pushed toward doctor consultation.
 
+Deep technical internals:
+- [Symptom Recommendation Engine Algorithm](docs/recommendation/README.md)
+
 ### 3) AI Chat Assistant (AyuBot)
 
 What it does:

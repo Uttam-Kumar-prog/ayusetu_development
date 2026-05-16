@@ -89,14 +89,14 @@ export default function About() {
                   name: "Kundan Kumar",
                   role: "Co-Creator",
                   summary:
-                    "Focused on product engineering, patient-centric UX, and building reliable healthcare experiences end-to-end.",
+                    "Focused on platform architecture, intelligent reporting workflows",
                   gradient: "from-blue-50 to-indigo-50",
                 },
                 {
                   name: "Uttam Kumar",
                   role: "Co-Creator",
                   summary:
-                    "Focused on platform architecture, intelligent reporting workflows, and scalable backend integrations.",
+                    "building reliable healthcare experiences end-to-end.",
                   gradient: "from-emerald-50 to-cyan-50",
                 },
                 {
@@ -105,6 +105,27 @@ export default function About() {
                   summary:
                     "Focused on solution design, healthcare domain understanding, and shaping practical user journeys for better clinical outcomes.",
                   gradient: "from-violet-50 to-blue-50",
+                },
+                {
+                  name: "Rohit Kumar",
+                  role: "Co-Creator",
+                  summary:
+                    "Focused on implementation quality, practical feature delivery, and supporting reliable day-to-day platform operations.",
+                  gradient: "from-amber-50 to-orange-50",
+                },
+                {
+                  name: "Satyam Kumar",
+                  role: "Co-Creator",
+                  summary:
+                    "Usability improvements, and making user workflows simple, clear, and consistent for Database.",
+                  gradient: "from-rose-50 to-pink-50",
+                },
+                {
+                  name: "Himanshu Chauhan",
+                  role: "Co-Creator",
+                  summary:
+                    "Intelligent reporting workflows,integration stability, and strengthening readiness across core modules.",
+                  gradient: "from-sky-50 to-cyan-50",
                 },
               ].map((creator) => (
                 <article

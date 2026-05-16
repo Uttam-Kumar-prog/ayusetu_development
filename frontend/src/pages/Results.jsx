@@ -91,6 +91,56 @@ const Results = () => {
   const urgencyLabel = toTitle(recommendations?.urgency || recommendations?.severityLevel || 'medium');
   const specialtyLabel = recommendations?.recommendedSpecialty || 'Kayachikitsa';
   const chiefConcerns = normalizedRecommendations.map((rec) => toTitle(rec.symptom)).filter(Boolean);
+  const likelyCauses = Array.isArray(recommendations?.likelyCauses) ? recommendations.likelyCauses : [];
+  const globalAdvice = Array.isArray(recommendations?.globalAdvice) ? recommendations.globalAdvice : [];
+  const riskScore = Number.isFinite(Number(recommendations?.riskScore))
+    ? Number(recommendations.riskScore)
+    : null;
+  const confidenceScore = Number.isFinite(Number(recommendations?.confidenceScore))
+    ? Number(recommendations.confidenceScore)
+    : null;
+  const confidenceLabel = confidenceScore !== null ? `${Math.round(confidenceScore * 100)}%` : 'N/A';
+  const riskScoreGuide =
+    riskScore === null
+      ? 'Risk score unavailable.'
+      : riskScore >= 70
+        ? 'Higher risk score is worse. This value is high and needs faster clinical review.'
+        : riskScore >= 40
+          ? 'Higher risk score is worse. This value is moderate; monitor closely and follow recommendations.'
+          : 'Higher risk score is worse. This value is low, but continue monitoring.';
+  const confidenceGuide =
+    'Higher model confidence means the AI is more certain about pattern matching. It does not mean your health is better.';
+  const riskVisual = useMemo(() => {
+    if (riskScore === null) {
+      return {
+        label: 'Unknown',
+        badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200',
+        accentClass: 'border-slate-200 bg-slate-50/60',
+      };
+    }
+    if (riskScore >= 70) {
+      return {
+        label: 'High risk',
+        badgeClass: 'bg-rose-100 text-rose-700 border border-rose-200',
+        accentClass: 'border-rose-200 bg-rose-50/60',
+      };
+    }
+    if (riskScore >= 40) {
+      return {
+        label: 'Moderate risk',
+        badgeClass: 'bg-amber-100 text-amber-700 border border-amber-200',
+        accentClass: 'border-amber-200 bg-amber-50/60',
+      };
+    }
+    return {
+      label: 'Low risk',
+      badgeClass: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+      accentClass: 'border-emerald-200 bg-emerald-50/60',
+    };
+  }, [riskScore]);
+  const aiRecommendationParagraph = hasHighSeverity
+    ? `Based on your symptom pattern, this report is marked as high priority. Please arrange a ${specialtyLabel} consultation as soon as possible. Use home support only for short-term comfort and seek urgent medical care immediately if symptoms worsen.`
+    : `Based on your symptom pattern, start with the suggested supportive care for 3-5 days and monitor daily. If symptoms do not improve or new symptoms appear, book a ${specialtyLabel} consultation for personalized treatment guidance.`;
   const nextSteps = hasHighSeverity
     ? [
         'Consult a specialist today for in-person assessment.',
@@ -120,6 +170,14 @@ const Results = () => {
       `Severity: ${toTitle(recommendations?.severityLevel || 'moderate')}`,
       `Urgency: ${toTitle(recommendations?.urgency || 'medium')}`,
       `Recommended Specialty: ${recommendations?.recommendedSpecialty || 'N/A'}`,
+      `Risk Score: ${riskScore !== null ? riskScore : 'N/A'}`,
+      `Confidence: ${confidenceLabel}`,
+      `Risk Guide: ${riskScoreGuide}`,
+      `Confidence Guide: ${confidenceGuide}`,
+      likelyCauses.length ? `Likely Causes: ${likelyCauses.join(', ')}` : '',
+      '',
+      `AI Recommendation: ${aiRecommendationParagraph}`,
+      ...globalAdvice.map((item, index) => `AI Advice ${index + 1}: ${item}`),
       '',
       'Recommendations:',
       ...normalizedRecommendations.map((rec, idx) => {
@@ -189,6 +247,23 @@ const Results = () => {
         </div>
         <h2>Findings and Recommendations</h2>
         ${recommendationRows}
+        <h2>AI Recommendation Summary</h2>
+        <p><strong>Risk Score:</strong> ${safeHtml(riskScore !== null ? String(riskScore) : 'N/A')}</p>
+        <p><strong>Risk Level:</strong> ${safeHtml(riskVisual.label)}</p>
+        <p>${safeHtml(riskScoreGuide)}</p>
+        <p><strong>Model Confidence:</strong> ${safeHtml(confidenceLabel)}</p>
+        <p>${safeHtml(confidenceGuide)}</p>
+        <p>${safeHtml(aiRecommendationParagraph)}</p>
+        ${
+          likelyCauses.length
+            ? `<p><strong>Possible Contributors:</strong> ${safeHtml(likelyCauses.join(', '))}</p>`
+            : ''
+        }
+        ${
+          globalAdvice.length
+            ? `<ul>${globalAdvice.map((item) => `<li>${safeHtml(item)}</li>`).join('')}</ul>`
+            : ''
+        }
         <h2>Plan and Follow-up</h2>
         <ol>
           ${nextSteps.map((step) => `<li>${safeHtml(step)}</li>`).join('')}
@@ -271,6 +346,17 @@ const Results = () => {
       y += 6;
     });
 
+    addBlock('AI Recommendation Summary', 14, 20, true);
+    addBlock(`Risk Score: ${riskScore !== null ? riskScore : 'N/A'}`);
+    addBlock(`Risk Level: ${riskVisual.label}`);
+    addBlock(riskScoreGuide);
+    addBlock(`Model Confidence: ${confidenceLabel}`);
+    addBlock(confidenceGuide);
+    addBlock(aiRecommendationParagraph);
+    if (likelyCauses.length) {
+      addBlock(`Possible Contributors: ${likelyCauses.join(', ')}`);
+    }
+    globalAdvice.forEach((advice) => addBlock(`AI Advice: ${advice}`));
     addBlock('Plan and Follow-up', 14, 20, true);
     nextSteps.forEach((step, index) => addBlock(`${index + 1}. ${step}`));
 
@@ -407,6 +493,37 @@ const Results = () => {
         </section>
 
         <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 mb-6">
+          <h2 className="text-xl font-bold text-slate-900 font-serif mb-4">AI Recommendation Summary</h2>
+          <div className={`rounded-2xl border p-5 ${riskVisual.accentClass}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <span className="text-sm font-semibold text-slate-900">AI Summary</span>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${riskVisual.badgeClass}`}>
+                {riskVisual.label}
+              </span>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3 mb-1 text-sm">
+              <p className="text-slate-700"><span className="font-semibold text-slate-900">Risk score:</span> {riskScore !== null ? riskScore : 'N/A'}</p>
+              <p className="text-slate-700"><span className="font-semibold text-slate-900">Model confidence:</span> {confidenceLabel}</p>
+            </div>
+            <p className="text-xs text-slate-500 mb-1">{riskScoreGuide}</p>
+            <p className="text-xs text-slate-500 mb-3">{confidenceGuide}</p>
+            {likelyCauses.length ? (
+              <p className="text-slate-700 text-sm mb-3">
+                <span className="font-semibold text-slate-900">Possible contributors:</span> {likelyCauses.join(', ')}
+              </p>
+            ) : null}
+            <p className="text-slate-800 text-sm leading-6">{aiRecommendationParagraph}</p>
+            {globalAdvice.length ? (
+              <ul className="mt-3 list-disc pl-5 text-sm text-slate-700 space-y-1">
+                {globalAdvice.map((item, index) => (
+                  <li key={`ai-advice-${index}`}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 mb-6">
           <h2 className="text-xl font-bold text-slate-900 font-serif mb-4">Plan and Follow-up</h2>
           <ol className="list-decimal pl-5 space-y-2 text-slate-700 text-sm">
             {nextSteps.map((step, idx) => (
@@ -459,6 +576,35 @@ const Results = () => {
                   {toTitle(recommendations?.urgency || recommendations?.severityLevel || 'medium')}
                 </p>
               </div>
+            </div>
+
+            <div className={`rounded-2xl border p-4 mb-6 ${riskVisual.accentClass}`}>
+              <p className="text-sm text-slate-700 mb-1">
+                <strong>Risk Score:</strong> {riskScore !== null ? riskScore : 'N/A'}
+              </p>
+              <p className="text-sm text-slate-700 mb-1">
+                <strong>Risk Level:</strong> {riskVisual.label}
+              </p>
+              <p className="text-xs text-slate-500 mb-2">{riskScoreGuide}</p>
+              <p className="text-sm text-slate-700 mb-1">
+                <strong>Model Confidence:</strong> {confidenceLabel}
+              </p>
+              <p className="text-xs text-slate-500 mb-2">{confidenceGuide}</p>
+              {likelyCauses.length ? (
+                <p className="text-sm text-slate-700 mb-1">
+                  <strong>Possible Contributors:</strong> {likelyCauses.join(', ')}
+                </p>
+              ) : null}
+              <p className="text-sm text-slate-800 mt-2">
+                <strong>AI Recommendation:</strong> {aiRecommendationParagraph}
+              </p>
+              {globalAdvice.length ? (
+                <ul className="mt-2 list-disc pl-5 text-sm text-slate-700 space-y-1">
+                  {globalAdvice.map((item, index) => (
+                    <li key={`detailed-ai-advice-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
 
             <div className="space-y-3">

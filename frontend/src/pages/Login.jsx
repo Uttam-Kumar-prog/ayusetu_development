@@ -51,18 +51,19 @@ export default function Login() {
     [isLogin]
   );
 
-  const handleAuthChallenge = (data, purpose) => {
+  const handleAuthChallenge = (data, fallbackPurpose) => {
+    const resolvedPurpose = data?.purpose || fallbackPurpose || 'login';
     startOtpFlow({
       otpFlowToken: data?.otpFlowToken,
       expiresAt: data?.expiresAt,
       resendAfterSeconds: data?.resendAfterSeconds,
       email: formData.email,
-      purpose,
+      purpose: resolvedPurpose,
     });
     navigate('/verify-otp', {
       state: {
         from: redirectPath,
-        purpose,
+        purpose: resolvedPurpose,
       },
       replace: true,
     });

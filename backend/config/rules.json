@@ -3,51 +3,123 @@
     "headache": {
       "dosha": "Pitta/Vata",
       "severity": {
-        "mild": { "score": 1, "home": "Ginger tea 2x daily; rest in dark room", "reason": "Balances Pitta heat, calms Vata movement" },
-        "moderate": { "score": 2, "med": "Brahmi Vati or Pathyadi Kadha", "reason": "Reduces inflammation, calms nerves" },
-        "severe": { "score": 3, "action": "Consult Ayurvedic doctor immediately", "reason": "May indicate deeper imbalance" }
+        "mild": { "score": 1, "home": "Hydrate, rest in a dark room, and try mild ginger tea", "reason": "Supports cooling and calms aggravated Pitta/Vata patterns" },
+        "moderate": { "score": 2, "med": "Discuss Brahmi or Pathyadi formulations with a practitioner", "reason": "Traditionally used to calm inflammatory and stress-linked patterns" },
+        "severe": { "score": 3, "action": "Seek urgent clinical evaluation for severe or persistent headache", "reason": "High-intensity headache needs timely professional assessment" }
       }
     },
     "indigestion": {
       "dosha": "Kapha/Pitta",
       "severity": {
-        "mild": { "score": 1, "home": "Ajwain water after meals; light walks", "reason": "Stimulates Agni (digestive fire)" },
-        "moderate": { "score": 2, "med": "Hingvashtak Churna or Triphala", "reason": "Clears Ama (toxins), improves digestion" },
-        "severe": { "score": 3, "action": "Seek medical consultation" }
+        "mild": { "score": 1, "home": "Use warm water, lighter meals, and short post-meal walks", "reason": "Supports digestive fire and reduces heaviness" },
+        "moderate": { "score": 2, "med": "Discuss Hingvashtak or Triphala options with your clinician", "reason": "May support digestion when personalized appropriately" },
+        "severe": { "score": 3, "action": "Consult a doctor if severe pain, repeated vomiting, or prolonged symptoms occur", "reason": "Severe digestive symptoms require medical review" }
       }
     },
     "joint_pain": {
       "dosha": "Vata",
       "severity": {
-        "mild": { "score": 1, "home": "Warm sesame oil massage; ginger tea", "reason": "Pacifies Vata dryness and coldness" },
-        "moderate": { "score": 2, "med": "Maharasnadi Kwath or Yogaraja Guggulu", "reason": "Reduces Vata inflammation" },
-        "severe": { "score": 3, "action": "Doctor consultation required" }
+        "mild": { "score": 1, "home": "Gentle mobility, warm compress, and light oil massage", "reason": "May reduce stiffness in Vata-dominant discomfort" },
+        "moderate": { "score": 2, "med": "Discuss classical anti-inflammatory Ayurvedic support with a doctor", "reason": "Moderate joint pain often needs individualized therapy" },
+        "severe": { "score": 3, "action": "Consult a doctor promptly for severe swelling, pain, or movement restriction", "reason": "Severe joint symptoms can indicate active pathology" }
       }
     },
     "cold_cough": {
       "dosha": "Kapha",
       "severity": {
-        "mild": { "score": 1, "home": "Turmeric milk; Tulsi-ginger tea", "reason": "Clears Kapha congestion, boosts immunity" },
-        "moderate": { "score": 2, "med": "Sitopaladi Churna or Trikatu", "reason": "Dries excess Kapha, improves respiration" },
-        "severe": { "score": 3, "action": "Medical attention if persistent" }
+        "mild": { "score": 1, "home": "Warm fluids, steam inhalation, and rest", "reason": "Supports Kapha clearance and airway comfort" },
+        "moderate": { "score": 2, "med": "Discuss respiratory-supportive formulations with a clinician", "reason": "Moderate respiratory symptoms may need targeted treatment" },
+        "severe": { "score": 3, "action": "Seek urgent medical care for breathlessness, chest pain, or high fever", "reason": "Severe respiratory symptoms can worsen quickly" }
       }
     },
     "fatigue": {
       "dosha": "Vata/Kapha",
       "severity": {
-        "mild": { "score": 1, "home": "Ashwagandha milk; regular sleep routine", "reason": "Rejuvenates Ojas (vital energy)" },
-        "moderate": { "score": 2, "med": "Chyawanprash or Shilajit", "reason": "Boosts stamina and immunity" },
-        "severe": { "score": 3, "action": "Consult practitioner" }
+        "mild": { "score": 1, "home": "Prioritize sleep, hydration, and regular meal timing", "reason": "Improves baseline energy regulation" },
+        "moderate": { "score": 2, "med": "Discuss restorative support and lab screening with a clinician", "reason": "Persistent fatigue may have mixed systemic causes" },
+        "severe": { "score": 3, "action": "Seek clinical evaluation for severe fatigue or associated dizziness/breathlessness", "reason": "High fatigue burden can indicate significant underlying issues" }
       }
     },
     "anxiety": {
       "dosha": "Vata",
       "severity": {
-        "mild": { "score": 1, "home": "Brahmi tea; Pranayama breathing", "reason": "Calms Vata mind, reduces worry" },
-        "moderate": { "score": 2, "med": "Saraswatarishta or Ashwagandha", "reason": "Balances nervous system" },
-        "severe": { "score": 3, "action": "Professional guidance needed" }
+        "mild": { "score": 1, "home": "Try slow breathing, grounding routines, and reduced stimulants", "reason": "Helps calm Vata-like mental overactivity" },
+        "moderate": { "score": 2, "med": "Discuss mind-body therapy and suitable herbal options with a practitioner", "reason": "Moderate anxiety usually benefits from guided care" },
+        "severe": { "score": 3, "action": "Seek immediate professional support if anxiety is severe or affects safety", "reason": "Severe distress requires prompt care" }
+      }
+    },
+    "insomnia": {
+      "dosha": "Vata/Pitta",
+      "severity": {
+        "mild": { "score": 1, "home": "Maintain fixed sleep schedule and reduce late-night screen use", "reason": "Supports circadian balance and calms Vata/Pitta aggravation" },
+        "moderate": { "score": 2, "med": "Discuss individualized sleep-supportive therapy with a clinician", "reason": "Moderate insomnia often needs personalized intervention" },
+        "severe": { "score": 3, "action": "Consult a doctor for severe or prolonged sleep disruption", "reason": "Chronic sleep loss can significantly affect health" }
+      }
+    },
+    "skin_rash": {
+      "dosha": "Pitta/Kapha",
+      "severity": {
+        "mild": { "score": 1, "home": "Use gentle cooling skin care and avoid known irritants", "reason": "May reduce Pitta-driven irritation and inflammation" },
+        "moderate": { "score": 2, "med": "Discuss anti-inflammatory skin support with a clinician", "reason": "Moderate rash may need diagnosis-specific treatment" },
+        "severe": { "score": 3, "action": "Seek urgent care for rapidly spreading rash or breathing/swelling symptoms", "reason": "Severe rash can indicate acute allergic or infectious conditions" }
+      }
+    },
+    "fever": {
+      "dosha": "Pitta",
+      "severity": {
+        "mild": { "score": 1, "home": "Hydrate well, rest, and monitor temperature every 6-8 hours", "reason": "Supports cooling and reduces dehydration risk" },
+        "moderate": { "score": 2, "med": "Discuss fever-supportive therapy with a clinician", "reason": "Persistent fever may need targeted treatment" },
+        "severe": { "score": 3, "action": "Seek urgent medical care for high fever, confusion, or breathing issues", "reason": "High fever can progress quickly and needs prompt review" }
+      }
+    },
+    "stomach_pain": {
+      "dosha": "Pitta/Vata",
+      "severity": {
+        "mild": { "score": 1, "home": "Use warm fluids, avoid spicy/oily meals, and rest digestion", "reason": "Can reduce gut irritation and digestive load" },
+        "moderate": { "score": 2, "med": "Discuss personalized digestive support with a clinician", "reason": "Moderate abdominal symptoms need individual assessment" },
+        "severe": { "score": 3, "action": "Seek urgent care for severe pain, repeated vomiting, or blood in stool", "reason": "Severe abdominal pain may indicate acute pathology" }
+      }
+    },
+    "back_pain": {
+      "dosha": "Vata",
+      "severity": {
+        "mild": { "score": 1, "home": "Use warm compress and gentle mobility exercises", "reason": "Supports stiffness reduction in Vata-predominant pain" },
+        "moderate": { "score": 2, "med": "Discuss anti-inflammatory and posture-focused management with a clinician", "reason": "Moderate back pain often needs targeted care" },
+        "severe": { "score": 3, "action": "Seek medical review for severe pain, weakness, or numbness", "reason": "Neurological or structural causes must be ruled out" }
+      }
+    },
+    "nausea": {
+      "dosha": "Pitta/Kapha",
+      "severity": {
+        "mild": { "score": 1, "home": "Take small bland meals, sip warm fluids, and rest", "reason": "Can reduce gastric irritation and improve tolerance" },
+        "moderate": { "score": 2, "med": "Discuss anti-nausea supportive therapy with a clinician", "reason": "Persistent nausea may indicate digestive imbalance" },
+        "severe": { "score": 3, "action": "Seek urgent care for repeated vomiting, dehydration, or severe weakness", "reason": "Severe nausea can cause rapid fluid-electrolyte imbalance" }
+      }
+    },
+    "constipation": {
+      "dosha": "Vata",
+      "severity": {
+        "mild": { "score": 1, "home": "Increase water, fiber, and regular meal timing", "reason": "Supports bowel motility and reduces Vata dryness" },
+        "moderate": { "score": 2, "med": "Discuss bowel-regulation support with a clinician", "reason": "Persistent constipation may need guided treatment" },
+        "severe": { "score": 3, "action": "Seek medical review for severe pain, bloating, or no stool for prolonged period", "reason": "Severe constipation can indicate obstruction risk" }
+      }
+    },
+    "diarrhea": {
+      "dosha": "Pitta/Kapha",
+      "severity": {
+        "mild": { "score": 1, "home": "Use oral hydration and light bland diet", "reason": "Helps maintain fluids and gut rest" },
+        "moderate": { "score": 2, "med": "Discuss stool-control and gut-support therapy with a clinician", "reason": "Moderate diarrhea may require targeted care" },
+        "severe": { "score": 3, "action": "Seek urgent care for blood in stool, severe dehydration, or persistent high frequency", "reason": "Severe diarrhea can rapidly destabilize hydration" }
+      }
+    },
+    "sore_throat": {
+      "dosha": "Kapha/Pitta",
+      "severity": {
+        "mild": { "score": 1, "home": "Use warm fluids and soothing gargles", "reason": "Supports throat comfort and Kapha clearance" },
+        "moderate": { "score": 2, "med": "Discuss throat-supportive care with a clinician", "reason": "Persistent throat symptoms may need treatment" },
+        "severe": { "score": 3, "action": "Seek urgent care for severe pain, high fever, or swallowing/breathing difficulty", "reason": "Severe throat symptoms may require rapid intervention" }
       }
     }
   },
-  "disclaimer": "⚠️ NOT medical advice. Consult certified Ayurvedic practitioner. For emergencies, seek immediate medical help."
+  "disclaimer": "This is supportive wellness guidance, not a medical diagnosis. Consult a qualified clinician for treatment decisions. For emergencies, seek immediate medical care."
 }

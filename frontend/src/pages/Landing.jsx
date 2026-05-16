@@ -1,7 +1,16 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function Landing() {
+  const { user } = useAuth();
+  const dashboardPath = user?.role === "doctor"
+    ? "/doctor-dashboard"
+    : user?.role === "admin"
+      ? "/admin-dashboard"
+      : "/dashboard";
+  const viewDashboardPath = user ? dashboardPath : "/login";
+
   return (
     <div className="relative min-h-screen bg-white text-slate-900 font-sans overflow-x-hidden selection:bg-blue-100 selection:text-blue-900">
       
@@ -60,7 +69,7 @@ export default function Landing() {
             </svg>
           </Link>
           <Link
-            to="/login"
+            to={viewDashboardPath}
             className="px-8 py-4 bg-white/60 backdrop-blur-md text-slate-700 font-semibold rounded-full border border-slate-200 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-all duration-300 shadow-sm"
           >
             View Dashboard

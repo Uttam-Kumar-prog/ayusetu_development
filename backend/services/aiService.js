@@ -1,46 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-
-const rulesPath = path.join(__dirname, '../config/rules.json');
-const rules = JSON.parse(fs.readFileSync(rulesPath, 'utf-8'));
-
-const specialtyMap = {
-  'Vata': 'Nadi Pariksha',
-  'Pitta': 'Diet & Nutrition',
-  'Kapha': 'Panchakarma',
-  'Vata/Pitta': 'Nadi Pariksha',
-  'Kapha/Pitta': 'Kayachikitsa',
-  'Pitta/Vata': 'Kayachikitsa',
-  'Vata/Kapha': 'Diet & Nutrition',
-};
-
-const severityKey = (level) => {
-  if (level === 1) return 'mild';
-  if (level === 2) return 'moderate';
-  return 'severe';
-};
-
-const symptomAliases = {
-  headache: ['headache', 'migraine', 'head pain'],
-  indigestion: ['indigestion', 'acidity', 'gas', 'bloating'],
-  joint_pain: ['joint pain', 'knee pain', 'back pain', 'stiffness'],
-  cold_cough: ['cold', 'cough', 'sore throat', 'congestion', 'sneeze'],
-  fatigue: ['fatigue', 'tired', 'low energy', 'weakness'],
-  anxiety: ['anxiety', 'stress', 'restless', 'panic'],
-  insomnia: ['insomnia', 'sleepless', 'sleep problem', 'cannot sleep'],
-  skin_rash: ['skin rash', 'itching', 'rash', 'redness'],
-};
-
-const symptomCauseHints = {
-  headache: ['stress', 'sleep disruption', 'dehydration', 'pitta aggravation'],
-  indigestion: ['irregular meals', 'heavy/oily food', 'weak digestive fire (agni)'],
-  joint_pain: ['vata aggravation', 'inflammation', 'poor posture or strain'],
-  cold_cough: ['kapha accumulation', 'weather exposure', 'low immunity'],
-  fatigue: ['poor sleep quality', 'nutritional imbalance', 'chronic stress'],
-  anxiety: ['high stress load', 'vata imbalance', 'sleep deprivation'],
-  insomnia: ['mental overactivity', 'late-night routines', 'stress and anxiety'],
-  skin_rash: ['allergic trigger', 'pitta aggravation', 'dietary intolerance'],
-};
+const {
+  analyzeSymptoms,
+  inferSymptomsFromMessage,
+  inferSeverityFromMessage,
+  predictLikelyCauses,
+} = require('./recommendationEngine');
 
 const outOfScopeReply =
   'I am unaware about that. Please ask about symptoms or AyuSetu support.';
@@ -77,6 +40,13 @@ const healthKeywords = [
   'insomnia',
   'stress',
   'fatigue',
+  'fever',
+  'stomach pain',
+  'back pain',
+  'nausea',
+  'constipation',
+  'diarrhea',
+  'sore throat',
   'indigestion',
   'acidity',
   'bloating',
@@ -90,6 +60,10 @@ const healthKeywords = [
   'emergency',
   'chest pain',
   'breath',
+  'breathing',
+  'loose motion',
+  'throat pain',
+  'temperature',
 ];
 
 const greetingRegex = /^(hi|hello|hey|namaste|good morning|good afternoon|good evening)\b/;
@@ -113,19 +87,7 @@ const outOfScopePatterns = [
   /\belection\b/,
 ];
 
-const inferSeverityFromMessage = (loweredMessage) => {
-  if (/(severe|high|intense|unbearable|extreme)/.test(loweredMessage)) return 3;
-  if (/(moderate|medium)/.test(loweredMessage)) return 2;
-  return 1;
-};
-
-const inferSymptomsFromMessage = (loweredMessage) =>
-  Object.entries(symptomAliases)
-    .filter(([, aliases]) => aliases.some((alias) => loweredMessage.includes(alias)))
-    .map(([symptom]) => symptom);
-
-const hasKeyword = (text, keywords) =>
-  keywords.some((keyword) => text.includes(keyword));
+const hasKeyword = (text, keywords) => keywords.some((keyword) => text.includes(keyword));
 
 const isOutOfScopeMessage = (message = '') => {
   const lowered = String(message || '').toLowerCase().trim();
@@ -138,61 +100,7 @@ const isOutOfScopeMessage = (message = '') => {
     inferSymptomsFromMessage(lowered).length > 0;
 
   if (inScopeByKeywords) return false;
-
-  return true;
-};
-
-const predictLikelyCauses = (symptoms = []) => {
-  const causes = symptoms.flatMap((symptom) => symptomCauseHints[symptom] || []);
-  const unique = [...new Set(causes)];
-  return unique.slice(0, 5);
-};
-
-const analyzeSymptoms = ({ symptoms = [], lifestyle = '', language = 'en' }) => {
-  let totalScore = 0;
-  const doshaCollection = [];
-  const recommendations = [];
-  const unknownSymptoms = [];
-
-  symptoms.forEach((sym) => {
-    const rule = rules.symptoms[sym.name];
-    if (!rule) {
-      unknownSymptoms.push(sym.name);
-      return;
-    }
-
-    const key = severityKey(Number(sym.severity || 1));
-    const rec = rule.severity[key];
-    totalScore += rec.score;
-    doshaCollection.push(rule.dosha);
-    recommendations.push({
-      symptom: sym.name,
-      severity: key,
-      ...rec,
-    });
-  });
-
-  const uniqDosha = [...new Set(doshaCollection)];
-  const doshaImbalance = uniqDosha.length ? uniqDosha.join('/') : 'General Imbalance';
-  const severityLevel = totalScore >= 6 ? 'severe' : totalScore >= 3 ? 'moderate' : 'mild';
-
-  let urgency = 'LOW';
-  if (severityLevel === 'moderate') urgency = 'MEDIUM';
-  if (severityLevel === 'severe') urgency = 'HIGH';
-
-  const recommendedSpecialty = specialtyMap[doshaImbalance] || 'Kayachikitsa';
-
-  return {
-    doshaImbalance,
-    severityLevel,
-    urgency,
-    lifestyleSummary: lifestyle || 'Not provided',
-    recommendedSpecialty,
-    recommendations,
-    unknownSymptoms,
-    disclaimer: rules.disclaimer,
-    language,
-  };
+  return outOfScopePatterns.some((pattern) => pattern.test(lowered));
 };
 
 const fallbackAssistantReply = ({ message, triage, assistantName = 'AyuBot', memorySummary = null }) => {
@@ -201,7 +109,7 @@ const fallbackAssistantReply = ({ message, triage, assistantName = 'AyuBot', mem
     return outOfScopeReply;
   }
 
-  if (lowered.includes('emergency') || lowered.includes('chest pain') || lowered.includes('breath')) {
+  if (/(emergency|chest pain|shortness of breath|difficulty breathing|faint|seizure)/.test(lowered)) {
     return 'This may be urgent. Please seek emergency medical help immediately or call your local emergency number.';
   }
 
@@ -234,14 +142,20 @@ const fallbackAssistantReply = ({ message, triage, assistantName = 'AyuBot', mem
       memorySummary?.topSymptoms?.length
         ? ` I also noted previous recurring symptoms: ${memorySummary.topSymptoms.join(', ')}.`
         : '';
-    return `I noted a likely ${effectiveTriage.doshaImbalance} pattern.${memoryHint} A helpful first step is: ${step}. Ayurvedic reasoning: ${reason}. If symptoms are severe or persistent, please consult a doctor promptly.`;
+
+    const urgencyHint =
+      effectiveTriage.urgency === 'HIGH'
+        ? ' Because your risk appears high, please seek doctor consultation urgently.'
+        : '';
+
+    return `I noted a likely ${effectiveTriage.doshaImbalance} pattern.${memoryHint} A practical next step is: ${step}. Ayurvedic reasoning: ${reason}.${urgencyHint}`;
   }
 
   if (/(hello|hi|hey|namaste)/.test(lowered)) {
-    return `Namaste, I am ${assistantName}. I can help with symptom guidance, home remedies, and doctor consultation when needed. Tell me your main symptom to begin.`;
+    return `Namaste, I am ${assistantName}. I can help with symptom guidance, home support, and doctor consultation when needed. Tell me your main symptom to begin.`;
   }
 
-  return 'Thanks for sharing. Please mention your key symptoms (for example headache, joint pain, indigestion) and severity so I can give focused guidance.';
+  return 'Thanks for sharing. Please mention your key symptoms (for example headache, joint pain, indigestion), duration, and severity so I can provide safer guidance.';
 };
 
 const generateAssistantReply = async ({ message, triage, assistantName = 'AyuBot', memorySummary = null }) => {
@@ -260,7 +174,7 @@ const generateAssistantReply = async ({ message, triage, assistantName = 'AyuBot
     const prompt = [
       'You are an Ayurvedic telemedicine assistant.',
       'Give safe, non-diagnostic guidance and suggest doctor consultation when needed.',
-      'If the user asks anything outside symptoms, Ayurveda wellness, or AyuSetu platform support, reply exactly:',
+      'If user asks outside symptoms/Ayurveda/AyuSetu support, reply exactly:',
       `"${outOfScopeReply}"`,
       `Assistant display name: ${assistantName}`,
       `Known triage context: ${JSON.stringify(triage || {})}`,
@@ -276,7 +190,7 @@ const generateAssistantReply = async ({ message, triage, assistantName = 'AyuBot
       },
       body: JSON.stringify({
         model,
-        temperature: 0.3,
+        temperature: 0.2,
         messages: [{ role: 'user', content: prompt }],
       }),
     });

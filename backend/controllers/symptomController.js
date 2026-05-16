@@ -16,10 +16,18 @@ exports.submitSymptoms = asyncHandler(async (req, res) => {
   }
 
   const triage = analyzeSymptoms({ symptoms, lifestyle, language });
+  const normalizedSymptoms = triage?.normalizedSymptoms?.length
+    ? triage.normalizedSymptoms.map((symptom) => ({
+      name: symptom.name,
+      severity: Number(symptom.severity || 1),
+      durationDays: Number(symptom.durationDays || 0),
+      notes: symptom.notes || '',
+    }))
+    : symptoms;
 
   const history = await SymptomHistory.create({
     userId: req.user._id,
-    symptoms,
+    symptoms: normalizedSymptoms,
     lifestyle,
     language,
     inputMode,
@@ -33,7 +41,7 @@ exports.submitSymptoms = asyncHandler(async (req, res) => {
     userId: req.user._id,
     source: 'ASSESSMENT',
     rawText: `Assessment submitted. ${lifestyle || ''}`,
-    symptoms: symptoms.map((item) => ({
+    symptoms: normalizedSymptoms.map((item) => ({
       name: item.name,
       severity: Number(item.severity || 2),
       confidence: 0.9,
